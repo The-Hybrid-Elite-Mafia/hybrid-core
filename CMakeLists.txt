@@ -38,4 +38,18 @@ endif()
 if(WIN32)
   add_executable(hc_play apps/hc_play.cpp src/platform/wasapi_output.cpp)
   target_link_libraries(hc_play PRIVATE hybrid_core ole32 avrt)
+
+  # THE HYBRID CORE Studio — the faceplate app.
+  add_executable(HybridCore WIN32 studio/main.cpp studio/gfx.cpp src/platform/wasapi_output.cpp studio/studio.rc)
+  target_include_directories(HybridCore PRIVATE studio)
+  target_compile_definitions(HybridCore PRIVATE UNICODE _UNICODE)
+  target_link_libraries(HybridCore PRIVATE hybrid_core d3d11 dxgi d3dcompiler windowscodecs ole32 uuid avrt comdlg32 shell32 gdi32 user32)
+  if(MSVC)
+    target_link_options(HybridCore PRIVATE /ENTRY:wWinMainCRTStartup /MANIFEST:NO)
+  else()
+    target_link_options(HybridCore PRIVATE -municode)
+  endif()
+
+  # Installer: embeds the built HybridCore.exe (setup.rc points at ../build-win/HybridCore.exe;
+  # build_windows.sh produces dist/HybridCore-Setup.exe the same way).
 endif()

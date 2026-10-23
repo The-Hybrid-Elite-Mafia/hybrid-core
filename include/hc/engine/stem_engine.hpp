@@ -34,6 +34,7 @@ struct StemMeterSnapshot {
     LoudnessReading loudness;
     float peakDb[kNumChannels] = {-INFINITY, -INFINITY};
     float faderDb = 0.0f;
+    float tpDb[kNumChannels] = {-INFINITY, -INFINITY};   // per-channel true peak of the last block (master only)
     bool clipped = false;
 };
 
@@ -79,6 +80,7 @@ public:
         master_.prepare(maxBlock);
         masterMono_.resize(maxBlock);
         masterMeter_.prepare(sr);
+        tpL_.prepare(sr); tpR_.prepare(sr);
         pool_.start(workers, init);
     }
     void shutdown() { pool_.stop(); collectGarbage(); }
@@ -114,6 +116,7 @@ public:
     void stop() noexcept { playing_.store(false, std::memory_order_release); }
     void seek(std::uint64_t frame) noexcept { seekTarget_.store(frame, std::memory_order_release); }
     bool isPlaying() const noexcept { return playing_.load(std::memory_order_acquire); }
+    void requestMeterReset() noexcept { meterResetReq_.store(true, std::memory_order_release); }
     std::uint64_t playhead() const noexcept { return playhead_.load(std::memory_order_acquire); }
     std::uint64_t length() const noexcept { return length_; }
     std::uint32_t totalLatency() const noexcept { return totalLatency_.load(std::memory_order_relaxed); }
@@ -128,7 +131,8 @@ public:
     void process(float* outL, float* outR, std::uint32_t n) noexcept {
         swapChains();
         const std::uint64_t seek = seekTarget_.exchange(UINT64_MAX, std::memory_order_acq_rel);
-        if (seek != UINT64_MAX) { playhead_.store(seek, std::memory_order_release); resetChains(); }
+        if (seek != UINT64_MAX) { playhead_.store(seek, std::memory_order_release); resetChains(); resetMeters(); }
+        if (meterResetReq_.exchange(false, std::memory_order_acq_rel)) resetMeters();
 
         block_ = n;
         live_ = playing_.load(std::memory_order_acquire);
@@ -150,6 +154,15 @@ public:
         AudioBlock mb{{master_.ch[0].data(), master_.ch[1].data()}, kNumChannels, n};
         if (masterChain_) masterChain_->process(mb);
         masterMeter_.process(mb);
+        {   // per-channel true peak for the master's L/R meters
+            float pl = 0.0f, pr = 0.0f;
+            for (std::uint32_t i = 0; i < n; ++i) {
+                pl = std::max(pl, tpL_.pushFrame(mb.ch[0][i], mb.ch[0][i]));
+                pr = std::max(pr, tpR_.pushFrame(mb.ch[1][i], mb.ch[1][i]));
+            }
+            StemMeterSnapshot& w = masterSnap_.write_buffer();
+            w.tpDb[0] = simd::gain_to_db(pl); w.tpDb[1] = simd::gain_to_db(pr);
+        }
         publishMeter(masterSnap_, masterMeter_, mb, 0.0f);
         // Master spectrum tap (mid).
         float* mono = masterMono_.data();
@@ -254,6 +267,12 @@ private:
         totalLatency_.store(maxLat + (masterChain_ ? masterChain_->latency() : 0u), std::memory_order_relaxed);
     }
 
+    // Restart integrated loudness / LRA / true-peak hold (stems + master).
+    void resetMeters() noexcept {
+        for (auto& s : stems_) { s.meter.reset(); }
+        masterMeter_.reset();
+    }
+
     void resetChains() noexcept {
         for (auto& s : stems_) {
             if (s.chain) s.chain->reset();
@@ -271,11 +290,12 @@ private:
     ProcessorChain* masterChain_ = nullptr;
     std::atomic<ProcessorChain*> masterPending_{nullptr};
     LoudnessMeter masterMeter_;
+    TruePeakOversampler tpL_, tpR_;
     TripleBuffer<StemMeterSnapshot> masterSnap_;
     SampleTap masterTap_;
     SpscRing<ProcessorChain*, 64> graveyard_;
     WorkerPool pool_;
-    std::atomic<bool> playing_{false};
+    std::atomic<bool> playing_{false}, meterResetReq_{false};
     std::atomic<std::uint64_t> playhead_{0}, seekTarget_{UINT64_MAX};
     std::atomic<std::uint32_t> totalLatency_{0};
     std::uint64_t length_ = 0, pos_ = 0;
