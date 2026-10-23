@@ -1,0 +1,8 @@
+build/
+build-win/
+bin-windows/
+demo_stems/
+*.exe
+demo_master.wav
+test_results.txt
+render_report.txt
