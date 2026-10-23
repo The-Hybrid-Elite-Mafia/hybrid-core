@@ -25,7 +25,7 @@ namespace {
 
 const wchar_t* kTitle = L"THE HYBRID CORE 2.0 Setup";
 const wchar_t* kAppName = L"THE HYBRID CORE 2.0";
-const wchar_t* kUninstKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\HybridCore";
+const wchar_t* kUninstKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\HEM.HybridCore2";
 
 std::wstring knownFolder(REFKNOWNFOLDERID id) {
     PWSTR p = nullptr;
@@ -46,12 +46,12 @@ std::wstring installDir() {
         }
         base += L"\\Programs";
     }
-    return base + L"\\Hybrid Core";
+    return base + L"\\HEM Hybrid Core 2";
 }
 std::wstring appExe() { return installDir() + L"\\HybridCore.exe"; }
-std::wstring uninstExe() { return installDir() + L"\\Uninstall Hybrid Core.exe"; }
-std::wstring startLnk() { return knownFolder(FOLDERID_Programs) + L"\\Hybrid Core.lnk"; }
-std::wstring desktopLnk() { return knownFolder(FOLDERID_Desktop) + L"\\Hybrid Core.lnk"; }
+std::wstring uninstExe() { return installDir() + L"\\Uninstall HYBRID CORE 2.0.exe"; }
+std::wstring startLnk() { return knownFolder(FOLDERID_Programs) + L"\\THE HYBRID CORE 2.0.lnk"; }
+std::wstring desktopLnk() { return knownFolder(FOLDERID_Desktop) + L"\\THE HYBRID CORE 2.0.lnk"; }
 
 bool writeResource(int id, const std::wstring& path, std::wstring& err) {
     HRSRC r = FindResourceW(nullptr, MAKEINTRESOURCEW(id), MAKEINTRESOURCEW(10));   // RT_RCDATA
@@ -128,11 +128,23 @@ int install() {
     const bool s1 = makeShortcut(startLnk(), appExe(), L"THE HYBRID CORE 2.0 — Hybrid Elite Mafia");
     const bool s2 = makeShortcut(desktopLnk(), appExe(), L"THE HYBRID CORE 2.0 — Hybrid Elite Mafia");
 
-    // .hcs → Hybrid Core
-    writeKey(L"Software\\Classes\\.hcs", nullptr, L"HybridCore.Session");
-    writeKey(L"Software\\Classes\\HybridCore.Session", nullptr, L"Hybrid Core Session");
-    writeKey(L"Software\\Classes\\HybridCore.Session\\DefaultIcon", nullptr, L"\"" + appExe() + L"\",0");
-    writeKey(L"Software\\Classes\\HybridCore.Session\\shell\\open\\command", nullptr, L"\"" + appExe() + L"\" \"%1\"");
+    // .hcs → this app, unless another program already owns .hcs (then we
+    // only add ourselves to "Open with" so nothing of theirs is changed).
+    writeKey(L"Software\\Classes\\HEM.HybridCore2.Session", nullptr, L"Hybrid Core 2.0 Session");
+    writeKey(L"Software\\Classes\\HEM.HybridCore2.Session\\DefaultIcon", nullptr, L"\"" + appExe() + L"\",0");
+    writeKey(L"Software\\Classes\\HEM.HybridCore2.Session\\shell\\open\\command", nullptr, L"\"" + appExe() + L"\" \"%1\"");
+    {
+        HKEY k = nullptr;
+        wchar_t cur[128] = {}; DWORD sz = sizeof cur;
+        bool taken = false;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\.hcs", 0, KEY_READ, &k) == ERROR_SUCCESS) {
+            taken = RegQueryValueExW(k, nullptr, nullptr, nullptr, reinterpret_cast<BYTE*>(cur), &sz) == ERROR_SUCCESS &&
+                    cur[0] && lstrcmpW(cur, L"HEM.HybridCore2.Session") != 0;
+            RegCloseKey(k);
+        }
+        if (!taken) writeKey(L"Software\\Classes\\.hcs", nullptr, L"HEM.HybridCore2.Session");
+        writeKey(L"Software\\Classes\\.hcs\\OpenWithProgids", L"HEM.HybridCore2.Session", L"");
+    }
 
     HKEY k;
     if (RegCreateKeyExW(HKEY_CURRENT_USER, kUninstKey, 0, nullptr, 0, KEY_WRITE, nullptr, &k, nullptr) == ERROR_SUCCESS) {
@@ -158,7 +170,7 @@ int install() {
 }
 
 int uninstall() {
-    if (MessageBoxW(nullptr, L"Remove THE HYBRID CORE 2.0 from this PC?\n\nYour stems, sessions and exported masters are NOT touched.",
+    if (MessageBoxW(nullptr, L"Remove THE HYBRID CORE 2.0 from this PC?\n(Other HEM programs are not affected.)\n\nYour stems, sessions and exported masters are NOT touched.",
                     L"Uninstall Hybrid Core", MB_YESNO | MB_ICONQUESTION) != IDYES) return 1;
     if (!DeleteFileW(appExe().c_str()) && GetFileAttributesW(appExe().c_str()) != INVALID_FILE_ATTRIBUTES) {
         MessageBoxW(nullptr, L"Hybrid Core is running. Close it, then uninstall again.", L"Uninstall Hybrid Core", MB_ICONERROR);
@@ -166,14 +178,24 @@ int uninstall() {
     }
     DeleteFileW(startLnk().c_str());
     DeleteFileW(desktopLnk().c_str());
-    RegDeleteTreeW(HKEY_CURRENT_USER, L"Software\\Classes\\HybridCore.Session");
+    RegDeleteTreeW(HKEY_CURRENT_USER, L"Software\\Classes\\HEM.HybridCore2.Session");
+    {
+        HKEY ow;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\.hcs\\OpenWithProgids", 0, KEY_SET_VALUE, &ow) == ERROR_SUCCESS) {
+            RegDeleteValueW(ow, L"HEM.HybridCore2.Session");
+            RegCloseKey(ow);
+        }
+    }
     HKEY k;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\.hcs", 0, KEY_READ, &k) == ERROR_SUCCESS) {
         wchar_t v[64] = {}; DWORD sz = sizeof v;
         const bool ours = RegQueryValueExW(k, nullptr, nullptr, nullptr, reinterpret_cast<BYTE*>(v), &sz) == ERROR_SUCCESS &&
-                          lstrcmpW(v, L"HybridCore.Session") == 0;
+                          lstrcmpW(v, L"HEM.HybridCore2.Session") == 0;
         RegCloseKey(k);
-        if (ours) RegDeleteTreeW(HKEY_CURRENT_USER, L"Software\\Classes\\.hcs");
+        if (ours) {   // only clear the default we set; leave the key for anyone else
+            HKEY w;
+            if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\.hcs", 0, KEY_SET_VALUE, &w) == ERROR_SUCCESS) { RegDeleteValueW(w, nullptr); RegCloseKey(w); }
+        }
     }
     RegDeleteTreeW(HKEY_CURRENT_USER, kUninstKey);
     SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);

@@ -9,7 +9,7 @@ It uses no JUCE, no Qt and no third-party libraries — only the C++ standard li
 1. Download **`dist/HybridCore-Setup.exe`**.
 2. Run it. Windows may show "Windows protected your PC" because the file isn't code-signed.
    Click **More info → Run anyway**.
-3. Click **Yes**. It installs to `%LOCALAPPDATA%\Programs\Hybrid Core`, adds Start menu and desktop
+3. Click **Yes**. It installs to `%LOCALAPPDATA%\Programs\HEM Hybrid Core 2`, adds Start menu and desktop
    shortcuts, and makes `.hcs` session files open in Hybrid Core. No admin rights are needed.
 
 To uninstall: **Settings → Apps → THE HYBRID CORE 2.0 → Uninstall**. Your stems, sessions and exports
