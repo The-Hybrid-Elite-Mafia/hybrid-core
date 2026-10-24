@@ -17,11 +17,11 @@ are never touched.
 
 ## Using it
 
-The window is the HEM faceplate in 16:9 (title on top, console left, four rack panels right). Every knob, meter and screen on it is live. F11 = full screen.
+Three pages, tabs top-right: **CONSOLE** (the tracks fill the window), **RACK** (the four panels; double-click one to fill the window with it, again or Esc to go back) and **SHOW** (the whole 16:9 faceplate). Tab flips CONSOLE / RACK, F9 = SHOW, F11 = full screen. Every knob, meter and screen is live.
 
 | Part | What it does |
 |---|---|
-| Track rows 1–13 | Click the box in the middle (or ≡ → Load Stem Folder, Ctrl+L) and pick the stem folder: every WAV in it loads at once. You can also drop WAVs on the window. Click a name to select it; drag left/right for volume; double-click for 0 dB; right-click for load/remove. M = mute, S = solo. |
+| Track rows 1–13 | Drag the stems — or their whole folder — onto the window. Or click the box in the middle (≡ → Load Stems, Ctrl+L): the picker shows the WAVs; click any one and its whole folder loads, or select just the ones you want. Click a name to select it; drag left/right for volume; double-click for 0 dB; right-click for load/remove. M = mute, S = solo. |
 | Transport | ≡ menu · ⏮ rewind · ▶ play · ■ stop · ● export master · time · tempo (drag to set) · master level · analyze (per-stem LUFS on the lanes) · ⚙ audio settings · ⊞ full screen |
 | HEM STFT DESTROYER | Artifact repair for the selected stem: LIGHT/MEDIUM/HEAVY, STFT resolution, Threshold, Bleed (HF stereo phase fix), Decay. Live spectrogram. The switch or the title toggles bypass. |
 | HEM RESONANCE | Dynamic harsh-resonance suppressor: Sensitivity, Frequency, Bandwidth, Reduction, Compensation, SOFT/NORMAL/FAST. The screen shows the spectrum and the live cut curve. |

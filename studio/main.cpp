@@ -202,6 +202,7 @@ private:
     // files
     void loadFiles(const std::vector<std::wstring>& files, int slot = -1);
     void loadFolder();
+    void loadStemList(std::vector<std::wstring> files);
     void clearSlot(int s);
     void clearAll();
     void saveSessionAs();
@@ -358,7 +359,7 @@ bool App::init(HINSTANCE inst, int show) {
     rebuildEngine(48000.0);
     ShowWindow(hwnd_, show == SW_SHOWMINIMIZED || show == SW_MINIMIZE ? show : SW_SHOWMAXIMIZED);   // 16:9 faceplate: open maximized
     UpdateWindow(hwnd_);
-    toast("Click the box in the middle to load a whole stem folder at once");
+    toast("Drag your stems (or their folder) onto the window, or click the box in the middle");
     return true;
 }
 
@@ -674,13 +675,23 @@ void App::loadFiles(const std::vector<std::wstring>& files, int slot) {
     if (!errors.empty()) MessageBoxW(hwnd_, widen("Some files weren't loaded:\n\n" + errors).c_str(), L"Hybrid Core", MB_ICONWARNING);
 }
 
-// Pick a folder → every WAV in it loads at once (replacing what's loaded).
+// The file picker SHOWS the WAVs. Pick one stem → every WAV in its folder loads at once; pick several
+// (Ctrl-click, Ctrl+A) → just those load. Either way it replaces what's loaded.
 void App::loadFolder() {
     if (exporting_) { toast("Wait for the export to finish"); return; }
-    const std::wstring dir = pickFolderDialog(hwnd_, L"Pick the stem folder (all WAVs in it load together)");
-    if (dir.empty()) return;
-    std::vector<std::wstring> files = wavsInFolder(dir);
-    if (files.empty()) { MessageBoxW(hwnd_, L"No WAV files in that folder.\n\nIf the stems are still in a .zip, open the zip and click Extract all first.", L"Hybrid Core", MB_ICONINFORMATION); return; }
+    std::vector<std::wstring> picked = openFilesDialog(hwnd_, L"Load stems: click any stem to load its whole folder (or select the ones you want)",
+                                                       {L"WAV audio (*.wav)", L"*.wav"}, true);
+    if (picked.empty()) return;
+    std::vector<std::wstring> files;
+    if (picked.size() == 1) files = wavsInFolder(std::filesystem::path(picked[0]).parent_path().wstring());
+    else { files = std::move(picked); std::sort(files.begin(), files.end()); }
+    if (files.empty()) files = picked;   // the one picked file is an exported master: load it anyway, it was asked for
+    loadStemList(std::move(files));
+}
+
+// Up to 13 WAVs replace what's loaded (dropped folders, picked folders).
+void App::loadStemList(std::vector<std::wstring> files) {
+    if (files.empty()) { MessageBoxW(hwnd_, L"No WAV files there.\n\nIf the stems are still in a .zip, open the zip and click Extract all first.", L"Hybrid Core", MB_ICONINFORMATION); return; }
     if (files.size() > kNumStems) files.resize(kNumStems);
     if (loadedCount()) clearAll();
     loadFiles(files);
@@ -819,7 +830,7 @@ enum MenuId {
 
 void App::showMainMenu() {
     HMENU m = CreatePopupMenu();
-    AppendMenuW(m, MF_STRING, ID_LOAD_FOLDER, L"Load Stem Folder (all at once)…\tCtrl+L");
+    AppendMenuW(m, MF_STRING, ID_LOAD_FOLDER, L"Load Stems (pick one = its whole folder)…\tCtrl+L");
     AppendMenuW(m, MF_STRING, ID_LOAD, L"Add Stem Files…\tCtrl+Shift+L");
     AppendMenuW(m, MF_STRING | (loadedCount() ? 0 : MF_GRAYED), ID_CLEAR_ALL, L"Clear All Stems");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
@@ -1275,7 +1286,7 @@ void App::drawArrange() {
         if (hHot) gfx_.rectOutline(hint, Color(kCyan).alpha(0.6f), 1.5f);
         if (hHot && in_.released && activeId_ == 0) loadFolder();
         gfx_.textIn({hint.x0, hint.y0 + 8, hint.x1, hint.cy()}, "DROP UP TO 13 WAV STEMS HERE", Font::Large, kCyan);
-        gfx_.textIn({hint.x0, hint.cy(), hint.x1, hint.y1 - 8}, "or CLICK HERE to pick a stem folder - every WAV in it loads at once", Font::Normal, kDim);
+        gfx_.textIn({hint.x0, hint.cy(), hint.x1, hint.y1 - 8}, "or CLICK HERE and pick any stem - its whole folder loads at once", Font::Normal, kDim);
     }
 
     // Playhead.
@@ -1713,10 +1724,17 @@ LRESULT App::wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         HDROP d = reinterpret_cast<HDROP>(w);
         const UINT n = DragQueryFileW(d, 0xFFFFFFFF, nullptr, 0);
         std::vector<std::wstring> files;
+        bool droppedFolder = false;
         for (UINT i = 0; i < n; ++i) {
             wchar_t buf[MAX_PATH * 4];
             if (DragQueryFileW(d, i, buf, static_cast<UINT>(std::size(buf)))) {
                 std::wstring f = buf;
+                std::error_code ec;
+                if (std::filesystem::is_directory(std::filesystem::path(f), ec)) {   // a dropped folder: its WAVs
+                    for (auto& wv : wavsInFolder(f)) files.push_back(std::move(wv));
+                    droppedFolder = true;
+                    continue;
+                }
                 std::wstring ext = f.size() > 4 ? f.substr(f.size() - 4) : L"";
                 for (auto& c : ext) c = static_cast<wchar_t>(towlower(c));
                 if (ext == L".wav") files.push_back(f);
@@ -1725,7 +1743,8 @@ LRESULT App::wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         }
         DragFinish(d);
         std::sort(files.begin(), files.end());
-        loadFiles(files);
+        if (droppedFolder) loadStemList(std::move(files));   // a folder = a song: it replaces what's loaded
+        else loadFiles(files);                              // loose WAVs fill the empty slots
         return 0;
     }
     case WM_EXPORT_DONE: onExportDone(); return 0;
