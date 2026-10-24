@@ -17,7 +17,7 @@ are never touched.
 
 ## Using it
 
-Three pages, tabs top-right: **CONSOLE** (the tracks fill the window), **RACK** (the four panels; double-click one to fill the window with it, again or Esc to go back) and **SHOW** (the whole 16:9 faceplate). Tab flips CONSOLE / RACK, F9 = SHOW, F11 = full screen. Every knob, meter and screen is live.
+Three pages, tabs top-right: **CONSOLE** (the tracks fill the window), **RACK** (the four panels; `< STEM 7 - VOCALS >` top-left picks which stem the DESTROYER / RESONANCE / TRANSIENT panels are on — each stem has its own copy of those three, MASTERING is the whole mix; double-click one to fill the window with it, again or Esc to go back) and **SHOW** (the whole 16:9 faceplate). Tab flips CONSOLE / RACK, F9 = SHOW, F11 = full screen. Every knob, meter and screen is live.
 
 | Part | What it does |
 |---|---|

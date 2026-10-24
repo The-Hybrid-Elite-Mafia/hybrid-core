@@ -33,7 +33,9 @@
 #include "hc/engine/stem_engine.hpp"
 #include "hc/platform/thread_priority.hpp"
 #include "hc/platform/wasapi_output.hpp"
+#include <algorithm>
 #include <array>
+#include <cctype>
 #include <atomic>
 #include <chrono>
 #include <cmath>
@@ -256,6 +258,7 @@ private:
     Rect viewRect() const;
     void setPage(Page p);
     void drawPageTabs();
+    void drawRackStemPicker(float x0, float y0, float h);
     void toggleFullscreen();
     bool fullscreen_ = false;
     WINDOWPLACEMENT savedPlacement_{};
@@ -978,7 +981,7 @@ Rect App::viewRect() const {
 
 void App::setPage(Page p) {
     if (p != Page::Rack) zoom_ = -1;
-    if (p == Page::Rack && page_ != Page::Rack) toast("RACK: double-click a panel to fill the window with it  -  Tab = CONSOLE / RACK");
+    if (p == Page::Rack && page_ != Page::Rack) toast("RACK: < > top-left picks the stem  -  double-click a panel to fill the window  -  Tab = CONSOLE / RACK");
     page_ = p;
     activeId_ = 0;
 }
@@ -1682,6 +1685,41 @@ void App::drawPageTabs() {
         gfx_.rectOutline(r, Color(kCyan).alpha(on ? 0.9f : (hotId_ == 9001 + i ? 0.8f : 0.4f)), 1.5f * px);
         gfx_.textIn(r, names[i], Font::Small, on ? Color(0x041016FF) : kText);
     }
+    if (page_ == Page::Rack) drawRackStemPicker(v.x0 + 10 * px, v.y0 + 8 * px, th);
+}
+
+// RACK page, top-left: which stem the DESTROYER / RESONANCE / TRANSIENT panels are showing, with < > to
+// step through the loaded stems (empty slots are skipped). Same stem as the one selected on CONSOLE.
+void App::drawRackStemPicker(float x0, float y0, float h) {
+    std::vector<int> loaded;
+    for (int i = 0; i < static_cast<int>(kNumStems); ++i) if (slots_[static_cast<std::size_t>(i)].loaded) loaded.push_back(i);
+    const float aw = h + 8;   // arrow button width
+    const float nw = gfx_.textWidth("STEM 13 - PERCUSSION", Font::Small) + 30;
+    const Rect prev{x0, y0, x0 + aw, y0 + h};
+    const Rect box{prev.x1 + 4, y0, prev.x1 + 4 + nw, y0 + h};
+    const Rect next{box.x1 + 4, y0, box.x1 + 4 + aw, y0 + h};
+    if (!loaded.empty()) {
+        // Position of the current stem among the loaded ones (or the first loaded one, if an empty slot is selected).
+        auto it = std::find(loaded.begin(), loaded.end(), selected_);
+        int k = it == loaded.end() ? -1 : static_cast<int>(it - loaded.begin());
+        const int n = static_cast<int>(loaded.size());
+        if (button(9010, prev)) selected_ = loaded[static_cast<std::size_t>(k < 0 ? 0 : (k + n - 1) % n)];
+        if (button(9011, next) || button(9012, box)) selected_ = loaded[static_cast<std::size_t>(k < 0 ? 0 : (k + 1) % n)];
+    }
+    for (int i = 0; i < 3; ++i) {
+        const Rect r = i == 0 ? prev : (i == 1 ? box : next);
+        gfx_.roundRect(r, 6, Color(0x05080BE0));
+        gfx_.rectOutline(r, Color(kCyan).alpha(hotId_ == 9010 + (i == 0 ? 0 : (i == 1 ? 2 : 1)) ? 0.8f : 0.4f), 1.5f);
+    }
+    gfx_.textIn(prev, "<", Font::Small, kText);
+    gfx_.textIn(next, ">", Font::Small, kText);
+    std::string label = "NO STEMS LOADED";
+    if (!loaded.empty() && sel().loaded) {
+        label = fmt("STEM %.0f - ", static_cast<double>(selected_ + 1));
+        for (char c : shownName(selected_)) label += static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+        while (label.size() > 4 && gfx_.textWidth(label, Font::Small) > nw - 16) label.pop_back();
+    } else if (!loaded.empty()) label = "PICK A STEM >";
+    gfx_.textIn(box, label, Font::Small, loaded.empty() ? kDim : kCyan);
 }
 
 // ====================================================================================== window procedure
