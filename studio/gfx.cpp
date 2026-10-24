@@ -453,6 +453,10 @@ void Renderer::arc(float cx, float cy, float r, float a0, float a1, float t, Col
     }
 }
 
+void Renderer::triangle(float x0, float y0, float x1, float y1, float x2, float y2, Color c) {
+    tri(X(x0), Y(y0), X(x1), Y(y1), X(x2), Y(y2), pack(c));
+}
+
 void Renderer::circle(float cx, float cy, float r, Color c) { circleGradient(cx, cy, r, c, c); }
 
 void Renderer::circleGradient(float cx, float cy, float r, Color top, Color bottom) {

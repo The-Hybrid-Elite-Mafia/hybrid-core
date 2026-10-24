@@ -115,6 +115,20 @@ public:
     void play() noexcept { playing_.store(true, std::memory_order_release); }
     void stop() noexcept { playing_.store(false, std::memory_order_release); }
     void seek(std::uint64_t frame) noexcept { seekTarget_.store(frame, std::memory_order_release); }
+    // Loop [start, end) in source frames. The wrap is sample-accurate inside the block (no gap, no click;
+    // plugin chains keep running across it). Applies only while the playhead is before `end`, so playing
+    // from past the loop just plays on. Start and end are packed in one atomic so the audio thread never
+    // sees half an update.
+    void setLoop(bool on, std::uint64_t start, std::uint64_t end) noexcept {
+        if (end <= start) on = false;
+        start = std::min<std::uint64_t>(start, 0xFFFFFFFFull);
+        end = std::min<std::uint64_t>(end, 0xFFFFFFFFull);
+        loopRange_.store((start << 32) | end, std::memory_order_relaxed);
+        loopOn_.store(on, std::memory_order_release);
+    }
+    bool loopOn() const noexcept { return loopOn_.load(std::memory_order_acquire); }
+    std::uint64_t loopStart() const noexcept { return loopRange_.load(std::memory_order_relaxed) >> 32; }
+    std::uint64_t loopEnd() const noexcept { return loopRange_.load(std::memory_order_relaxed) & 0xFFFFFFFFull; }
     bool isPlaying() const noexcept { return playing_.load(std::memory_order_acquire); }
     void requestMeterReset() noexcept { meterResetReq_.store(true, std::memory_order_release); }
     std::uint64_t playhead() const noexcept { return playhead_.load(std::memory_order_acquire); }
@@ -137,6 +151,11 @@ public:
         block_ = n;
         live_ = playing_.load(std::memory_order_acquire);
         pos_ = live_ ? playhead_.load(std::memory_order_relaxed) : 0;
+        {
+            const std::uint64_t lr = loopRange_.load(std::memory_order_relaxed);
+            lpS_ = lr >> 32; lpE_ = lr & 0xFFFFFFFFull;
+            lpOn_ = live_ && loopOn_.load(std::memory_order_acquire) && lpE_ > lpS_ && pos_ < lpE_;
+        }
         anySolo_ = false;
         for (auto& s : stems_) anySolo_ |= s.solo.load(std::memory_order_relaxed);
 
@@ -171,16 +190,26 @@ public:
 
         simd::copy(outL, mb.ch[0], n);
         simd::copy(outR, mb.ch[1], n);
-        if (live_) {
-            const std::uint64_t ph = pos_ + n;
-            playhead_.store(ph, std::memory_order_release);
-        }
+        if (live_) playhead_.store(advance(pos_, n), std::memory_order_release);
     }
 
 private:
     static void stemJob(void* ctx, std::size_t i) noexcept {
         simd::ScopedFlushDenormals ftz;
         static_cast<StemEngine*>(ctx)->processStem(i);
+    }
+
+    // Where the playhead lands after n frames from p (same run logic as the source read).
+    std::uint64_t advance(std::uint64_t p, std::uint32_t n) const noexcept {
+        if (!lpOn_) return p + n;
+        std::uint32_t done = 0;
+        while (done < n) {
+            std::uint32_t run = n - done;
+            if (p < lpE_) run = static_cast<std::uint32_t>(std::min<std::uint64_t>(run, lpE_ - p));
+            done += run; p += run;
+            if (p >= lpE_) p = lpS_;
+        }
+        return p;
     }
 
     void processStem(std::size_t idx) noexcept {
@@ -190,11 +219,21 @@ private:
         for (std::size_t c = 0; c < kNumChannels; ++c) {
             float* dst = s.buf.ch[c].data();
             const float* src = s.source.ch[c];
-            std::uint32_t avail = 0;
-            if (live_ && src && pos_ < s.source.length)
-                avail = static_cast<std::uint32_t>(std::min<std::uint64_t>(n, s.source.length - pos_));
-            if (avail) simd::copy(dst, src + pos_, avail);
-            simd::clear(dst + avail, n - avail);
+            if (!live_ || !src) { simd::clear(dst, n); continue; }
+            // Read in runs: one run normally, more when the loop end falls inside this block.
+            std::uint64_t p = pos_;
+            std::uint32_t done = 0;
+            while (done < n) {
+                std::uint32_t run = n - done;
+                if (lpOn_ && p < lpE_) run = static_cast<std::uint32_t>(std::min<std::uint64_t>(run, lpE_ - p));
+                std::uint32_t avail = 0;
+                if (p < s.source.length) avail = static_cast<std::uint32_t>(std::min<std::uint64_t>(run, s.source.length - p));
+                if (avail) simd::copy(dst + done, src + p, avail);
+                if (avail < run) simd::clear(dst + done + avail, run - avail);
+                done += run;
+                p += run;
+                if (lpOn_ && p >= lpE_) p = lpS_;
+            }
         }
         AudioBlock b{{s.buf.ch[0].data(), s.buf.ch[1].data()}, kNumChannels, n};
         // 2. Chain.
@@ -299,6 +338,10 @@ private:
     std::atomic<std::uint64_t> playhead_{0}, seekTarget_{UINT64_MAX};
     std::atomic<std::uint32_t> totalLatency_{0};
     std::uint64_t length_ = 0, pos_ = 0;
+    std::atomic<bool> loopOn_{false};
+    std::atomic<std::uint64_t> loopRange_{0};
+    std::uint64_t lpS_ = 0, lpE_ = 0;   // this block's loop (audio thread)
+    bool lpOn_ = false;
     std::uint32_t block_ = 0;
     bool live_ = false, anySolo_ = false;
 };

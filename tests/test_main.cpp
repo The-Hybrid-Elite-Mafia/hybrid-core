@@ -285,6 +285,52 @@ static void testEngine() {
     eng->shutdown();
 }
 
+
+static void testLoop() {
+    // One stem holding a ramp (sample i = i * 1e-6): the master must equal the ramp read through the loop map.
+    const double sr = 48000; const std::uint32_t blk = 256;
+    const std::size_t len = 40000;
+    std::vector<float> ramp(len);
+    for (std::size_t i = 0; i < len; ++i) ramp[i] = float(i) * 1e-6f;
+    struct Case { std::uint64_t a, b; const char* name; };
+    for (Case c : {Case{1000, 5000, "Loop 1000..5000 (end inside a block): master == ramp through loop (max error)"},
+                   Case{1024, 3072, "Loop 1024..3072 (block-aligned): master == ramp through loop (max error)"},
+                   Case{3000, 3100, "Loop 3000..3100 (shorter than a block): master == ramp through loop (max error)"}}) {
+        auto eng = std::make_unique<StemEngine>();
+        eng->prepare(sr, blk, 2);
+        eng->setSource(0, ramp.data(), ramp.data(), len);
+        eng->setLoop(true, c.a, c.b);
+        eng->play();
+        const std::size_t n = 30720;
+        std::vector<float> oL(n), oR(n);
+        for (std::size_t p = 0; p < n; p += blk) eng->process(oL.data() + p, oR.data() + p, blk);
+        double err = 0;
+        std::uint64_t q = 0;
+        for (std::size_t i = 0; i < n; ++i) {
+            err = std::max(err, std::fabs(double(ramp[q]) - oL[i]));
+            if (++q >= c.b) q = c.a;
+        }
+        check(err < 1e-7, c.name, err);
+        check(eng->playhead() == q, "  ...and the playhead lands where the loop says", double(eng->playhead()));
+        eng->shutdown();
+    }
+    {   // Playing from past the loop end plays straight through (no jump back).
+        auto eng = std::make_unique<StemEngine>();
+        eng->prepare(sr, blk, 2);
+        eng->setSource(0, ramp.data(), ramp.data(), len);
+        eng->setLoop(true, 1000, 5000);
+        eng->seek(8000);
+        eng->play();
+        std::vector<float> oL(4096), oR(4096);
+        for (std::size_t p = 0; p < 4096; p += blk) eng->process(oL.data() + p, oR.data() + p, blk);
+        double err = 0;
+        for (std::size_t i = 0; i < 4096; ++i) err = std::max(err, std::fabs(double(ramp[8000 + i]) - oL[i]));
+        check(err < 1e-7, "Loop: playing from after the loop end plays straight on (max error)", err);
+        eng->setLoop(false, 1000, 5000);
+        eng->shutdown();
+    }
+}
+
 static void benchEngine() {
     // Full chain on every stem: EQ (2 bands active) + Comp + Artifact Destroyer;
     // master: EQ + Limiter. Measures real-time factor on THIS machine.
@@ -399,7 +445,8 @@ int main() {
     testLoudness(); testTruePeak(); testLimiter();
     testArtifactLatencyAndTransparency(); testArtifactShimmerReduction();
     testResonance(); testResonanceTransparent(); testTransient(); testWidth();
-    testEngine(); benchEngine();
+    testEngine();
+    testLoop(); benchEngine();
     std::printf("\n%s (%d failure%s)\n", g_fail ? "FAILED" : "ALL PASSED", g_fail, g_fail == 1 ? "" : "s");
     return g_fail ? 1 : 0;
 }

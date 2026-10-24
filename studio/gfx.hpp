@@ -87,6 +87,7 @@ public:
     void polyline(const float* xy, std::size_t n, float t, Color c);
     void arc(float cx, float cy, float r, float a0, float a1, float t, Color c);   // radians, clockwise on screen
     void circle(float cx, float cy, float r, Color c);
+    void triangle(float x0, float y0, float x1, float y1, float x2, float y2, Color c);   // filled
     void circleGradient(float cx, float cy, float r, Color top, Color bottom);
     void ring(float cx, float cy, float r, float t, Color c) { arc(cx, cy, r, 0.0f, 6.2831853f, t, c); }
     // Filled polygon below a curve down to baseline y (for spectra).

@@ -22,13 +22,15 @@ Three pages, tabs top-right: **CONSOLE** (the tracks fill the window), **RACK** 
 | Part | What it does |
 |---|---|
 | Track rows 1–13 | Drag the stems — or their whole folder — onto the window. Or click the box in the middle (≡ → Load Stems, Ctrl+L): the picker shows the WAVs; click any one and its whole folder loads, or select just the ones you want. Click a name to select it; drag left/right for volume; double-click for 0 dB; right-click for load/remove. M = mute, S = solo. |
-| Transport | ≡ menu · ⏮ rewind · ▶ play · ■ stop · ● export master · time · tempo (drag to set) · master level · analyze (per-stem LUFS on the lanes) · ⚙ audio settings · ⊞ full screen |
+| Transport | Every button is drawn live (lights, presses, hover) — nothing painted. ≡ menu · ⏮ rewind · ▶ play · ■ stop · ● export master · ⟳ LOOP · time · tempo (drag to set) · master level · analyze (per-stem LUFS on the lanes) · ⚙ audio settings · ⊞ full screen |
 | HEM STFT DESTROYER | Artifact repair for the selected stem: LIGHT/MEDIUM/HEAVY, STFT resolution, Threshold, Bleed (HF stereo phase fix), Decay. Live spectrogram. The switch or the title toggles bypass. |
 | HEM RESONANCE | Dynamic harsh-resonance suppressor: Sensitivity, Frequency, Bandwidth, Reduction, Compensation, SOFT/NORMAL/FAST. The screen shows the spectrum and the live cut curve. |
 | HEM TRANSIENT | Transient designer: Attack, Sustain, Punch/Speed, Gain, Mix. Live activity screens. The LED toggles bypass. |
 | HEM MASTERING | Master bus: Width → glue (MODE: CLEAN/PUNCH/LOUD) → true-peak limiter (Ceiling, Threshold, Release). LUFS M/S and L/R true-peak meters; Integrated, Short-term, PSR, PLR, LRA. The selector and TARGET set the export loudness. |
 
-Keys: Space play/stop · Home rewind · Ctrl+L load · Ctrl+E export · Ctrl+O / Ctrl+S open/save session.
+Loop: drag across the bar numbers to set the section (snaps to whole bars; Shift = free), click the bar numbers to jump; LOOP or **L** turns it on/off; with no section set it loops the whole song. The wrap is sample-exact inside the audio engine (no gap). Export always renders the whole song. Saved in the session.
+
+Keys: Space play/stop · Home rewind · L loop · Ctrl+L load · Ctrl+E export · Ctrl+O / Ctrl+S open/save session.
 Knobs: drag up/down (Shift = fine), mouse wheel, double-click = default.
 
 Export writes a 24-bit WAV. With a target set, it renders three passes (measure → limit → verify) so the

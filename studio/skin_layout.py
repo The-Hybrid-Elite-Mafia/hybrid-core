@@ -49,10 +49,18 @@ RECTS = [
     ("msPlrLabel", 1052, 2031, 1118, 2051), ("msFooterLabel", 1052, 2101, 1118, 2122),
     ("msModeBox", 1192, 1935, 1268, 1961), ("msTargetBox", 1296, 1935, 1368, 1961), ("msTargetLabel", 1286, 1986, 1376, 2007),
 ]
-# ---- clickable regions that keep their painted look -------------------------
+# ---- clickable regions --------------------------------------------------------------------------
+# Every BUTTON here is cut out of the art and drawn live by the app (real hover / press / lit states);
+# the plug-in titles (dsTitle, rsTitle, trTitle, msTitle) keep their printed lettering and are click
+# areas for bypass, with the bypass state drawn live over them.
 HOTSPOTS = [
-    ("btnMenu", 76, 145, 131, 200), ("btnRewind", 141, 145, 198, 200), ("btnPlay", 208, 145, 265, 200),
-    ("btnStop", 274, 145, 331, 200), ("btnRecord", 341, 145, 398, 200),
+    # transport: six real buttons (MENU REWIND PLAY STOP RECORD LOOP) spread evenly over the painted row
+    ("btnMenu", 76, 145, 126, 200),
+    ("btnRewind", 132, 145, 182, 200),
+    ("btnPlay", 187, 145, 237, 200),
+    ("btnStop", 243, 145, 293, 200),
+    ("btnRecord", 298, 145, 348, 200),
+    ("btnLoop", 354, 145, 404, 200),
     ("btnAnalyze", 1163, 145, 1233, 200), ("btnSettings", 1243, 145, 1298, 200), ("btnView", 1306, 145, 1360, 200),
     ("btnTopLeft", 80, 96, 116, 126), ("btnTopRight", 1322, 96, 1358, 126),
     ("dsPrev", 467, 1322, 497, 1354), ("dsNext", 620, 1322, 652, 1354), ("dsTitle", 100, 1316, 440, 1356),
@@ -64,6 +72,9 @@ HOTSPOTS = [
 # transport hotspots above are in "top crop" coordinates; shift into image space
 HOTSPOTS = [(n, x0, y0 + 430, x1, y1 + 430) if n.startswith("btn") else (n, x0, y0, x1, y1)
             for (n, x0, y0, x1, y1) in HOTSPOTS]
+TITLES = {"dsTitle", "rsTitle", "trTitle", "msTitle"}
+# Whole strips of the art that held painted buttons (image coords), cleared before the live buttons are drawn.
+BUTTON_STRIPS = [(72, 571, 407, 634), (1158, 571, 1365, 634)]
 # track rows: centre y of row i = ROW0 + i * ROW_STEP
 ROW0, ROW_STEP, ROW_H = 0.0, 0.0, 0.0   # computed from the 16:9 layout (see write_header)
 ROW_M = (243, 271)   # x range of the painted M box
@@ -122,6 +133,17 @@ def build_skin():
         fd.ellipse([cx - r, cy - r, cx + r, cy + r], fill=col)
     for name, x0, y0, x1, y1 in RECTS:
         col = (7, 11, 15) if name in SCREEN_LIKE else border_median(im, x0, y0, x1, y1)
+        md.rectangle([x0, y0, x1, y1], fill=255)
+        fd.rectangle([x0, y0, x1, y1], fill=col)
+    for x0, y0, x1, y1 in BUTTON_STRIPS:
+        col = border_median(im, x0, y0, x1, y1)
+        md.rectangle([x0, y0, x1, y1], fill=255)
+        fd.rectangle([x0, y0, x1, y1], fill=col)
+    for name, x0, y0, x1, y1 in HOTSPOTS:
+        if name in TITLES or name.startswith("btn") and not name.startswith("btnTop"):
+            continue   # titles keep their lettering; transport buttons are covered by BUTTON_STRIPS
+        x0, y0, x1, y1 = x0 - 2, y0 - 2, x1 + 2, y1 + 2
+        col = border_median(im, x0, y0, x1, y1)
         md.rectangle([x0, y0, x1, y1], fill=255)
         fd.rectangle([x0, y0, x1, y1], fill=col)
     mask = mask.filter(ImageFilter.GaussianBlur(1.5))

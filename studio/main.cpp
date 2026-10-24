@@ -227,6 +227,10 @@ private:
     float knob(int id, const LY::Knob& k, float value, float mn, float mx, Taper taper, float def, bool bipolar,
                Color accent, const std::string& valueText, bool dim);
     bool button(int id, const Rect& r);
+    enum class Icon { Menu, Rewind, Play, Stop, Record, Loop, Analyze, Settings, View, Left, Right };
+    // A real (drawn, not painted) hardware-style button: hover, press and lit states. Returns true on click.
+    bool hwButton(int id, const LY::Box& b, Icon icon, bool lit = false, Color litColor = kCyan, float iconScale = 1.0f);
+    void drawIcon(Icon icon, const Rect& r, Color c, float iconScale);
     void toast(const std::string& s) { toast_ = s; toastUntil_ = now() + 4.0; }
     static double now() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
     void showMainMenu();
@@ -261,6 +265,15 @@ private:
     void drawRackStemPicker(float x0, float y0, float h);
     void toggleFullscreen();
     bool fullscreen_ = false;
+    // Loop: [loopA_, loopB_) in source frames; loopB_ == 0 means "the whole song".
+    bool loopOn_ = false;
+    std::uint64_t loopA_ = 0, loopB_ = 0;
+    std::uint64_t loopA() const { return loopB_ > loopA_ ? loopA_ : 0; }
+    std::uint64_t loopB() const;
+    void toggleLoop();
+    void setLoopRegion(std::uint64_t a, std::uint64_t b);
+    float loopDragX0_ = 0;
+    bool loopDragging_ = false;
     WINDOWPLACEMENT savedPlacement_{};
     float viewScale_ = 1, viewOffX_ = 0, viewOffY_ = 0;
 
@@ -413,6 +426,7 @@ void App::openFromCommandLine() {
                     sl.audio = std::move(au); sl.peaks = computePeaks(sl.audio, 2048);
                 }
                 bpm_ = sn.bpm; target_ = sn.targetLufs; normalize_ = sn.normalize; preset_ = std::clamp(sn.preset, 0, kNumPresets - 1);
+                loopOn_ = sn.loopOn; loopA_ = sn.loopA; loopB_ = sn.loopB;
                 rebuildEngine(rate > 0 ? rate : sr_, &sn);
                 sessionPath_ = a;
             }
@@ -713,6 +727,7 @@ void App::clearAll() {
     if (exporting_) { toast("Wait for the export to finish"); return; }
     stopAudio();
     eng_->stop();
+    loopOn_ = false; loopA_ = loopB_ = 0;   // a new song gets a fresh loop
     for (std::size_t i = 0; i < kNumStems; ++i) {
         eng_->setSource(i, nullptr, nullptr, 0);
         Slot& sl = slots_[i];
@@ -733,6 +748,7 @@ void App::saveSessionAs() {
     }
     s.master = captureMaster();
     s.bpm = bpm_; s.targetLufs = target_; s.normalize = normalize_; s.glueMode = static_cast<int>(glueMode_); s.preset = preset_;
+    s.loopOn = loopOn_; s.loopA = loopA_; s.loopB = loopB_;
     const std::wstring def = widen(songTitle()) + L" - HEM Session";
     const std::wstring path = saveFileDialog(hwnd_, L"Save Hybrid Core Session", {L"Hybrid Core Session (*.hcs)", L"*.hcs"}, L"hcs",
                                              sessionPath_.empty() ? def : sessionPath_);
@@ -763,6 +779,7 @@ void App::openSession() {
         sl.audio = std::move(a); sl.peaks = computePeaks(sl.audio, 2048);
     }
     bpm_ = s.bpm; target_ = s.targetLufs; normalize_ = s.normalize; preset_ = std::clamp(s.preset, 0, kNumPresets - 1);
+    loopOn_ = s.loopOn; loopA_ = s.loopA; loopB_ = s.loopB;
     rebuildEngine(rate > 0 ? rate : sr_, &s);
     eng_->seek(0);
     sessionPath_ = files[0];
@@ -911,6 +928,99 @@ bool App::button(int id, const Rect& r) {
     if (hot && in_.pressed) { activeId_ = id; return false; }
     if (activeId_ == id && in_.released) { activeId_ = 0; return hot; }
     return false;
+}
+
+bool App::hwButton(int id, const LY::Box& b, Icon icon, bool lit, Color litColor, float iconScale) {
+    const Rect r = R(b);
+    const bool clicked = button(id, r);
+    const bool hot = hotId_ == id, down = activeId_ == id && r.contains(in_.mx, in_.my);
+    const float rad = std::min(6.0f, 0.2f * std::min(r.w(), r.h()));
+    gfx_.roundRect({r.x0, r.y0 + 1.5f, r.x1, r.y1 + 1.5f}, rad, Color(0x000000FF).alpha(0.55f));     // drop shadow
+    gfx_.roundRect(r, rad, down ? Color(0x0B0F13FF) : Color(0x2A333CFF));                           // bevel edge
+    const Rect face = r.inset(1.5f);
+    gfx_.roundRect(face, rad - 1.0f, down ? Color(0x0E1317FF) : Color(0x161C22FF));
+    if (!down) gfx_.gradientV({face.x0 + rad * 0.5f, face.y0 + 1.0f, face.x1 - rad * 0.5f, face.cy()}, Color(0xFFFFFF10), Color(0xFFFFFF00));
+    if (lit) {
+        gfx_.roundRect(face, rad - 1.0f, litColor.alpha(down ? 0.16f : 0.22f));
+        gfx_.rectOutline(face.inset(0.5f), litColor.alpha(0.55f), 1.2f);
+    } else if (hot) {
+        gfx_.roundRect(face, rad - 1.0f, Color(0xFFFFFFFF).alpha(0.06f));
+    }
+    Rect ir = r;
+    if (down) ir = {r.x0, r.y0 + 1.0f, r.x1, r.y1 + 1.0f};
+    Color ic = lit ? litColor : (hot ? Color(0xFFFFFFFF) : kText);
+    if (icon == Icon::Record) ic = lit || hot ? Color(0xFF5A4AFF) : kRed;
+    drawIcon(icon, ir, ic, iconScale);
+    return clicked;
+}
+
+void App::drawIcon(Icon icon, const Rect& r, Color c, float iconScale) {
+    const float cx = r.cx(), cy = r.cy();
+    const float s = 0.21f * std::min(r.w(), r.h()) * iconScale;   // icon half-size
+    const float t = std::max(2.0f, s * 0.22f);                     // stroke
+    switch (icon) {
+    case Icon::Menu:
+        for (int i = -1; i <= 1; ++i) gfx_.line(cx - s, cy + i * s * 0.62f, cx + s, cy + i * s * 0.62f, t, c);
+        break;
+    case Icon::Rewind:
+        gfx_.rect({cx - s, cy - s * 0.85f, cx - s + t * 1.1f, cy + s * 0.85f}, c);
+        gfx_.triangle(cx + s * 0.9f, cy - s * 0.85f, cx + s * 0.9f, cy + s * 0.85f, cx - s * 0.55f, cy, c);
+        break;
+    case Icon::Play:
+        gfx_.triangle(cx - s * 0.65f, cy - s, cx - s * 0.65f, cy + s, cx + s * 0.95f, cy, c);
+        break;
+    case Icon::Stop:
+        gfx_.roundRect({cx - s * 0.8f, cy - s * 0.8f, cx + s * 0.8f, cy + s * 0.8f}, 1.5f, c);
+        break;
+    case Icon::Record:
+        gfx_.circle(cx, cy, s * 0.92f, c);
+        break;
+    case Icon::Loop: {
+        // Circular arrow: a ring with a gap at the top right and an arrowhead pointing round the circle.
+        const float R = s * 0.85f, a0 = -1.05f, a1 = a0 + 5.15f;
+        gfx_.arc(cx, cy, R, a0 + 0.35f, a1, t, c);
+        const float ax = cx + R * std::cos(a0 + 0.35f), ay = cy + R * std::sin(a0 + 0.35f);
+        const float tx = -std::sin(a0 + 0.35f), ty = std::cos(a0 + 0.35f);     // tangent (direction of travel reversed)
+        const float nx = std::cos(a0 + 0.35f), ny = std::sin(a0 + 0.35f);
+        const float h = s * 0.62f;
+        gfx_.triangle(ax - tx * h, ay - ty * h, ax + nx * h * 0.62f, ay + ny * h * 0.62f, ax - nx * h * 0.62f, ay - ny * h * 0.62f, c);
+        break;
+    }
+    case Icon::Analyze: {
+        const float w = s * 1.45f;
+        const float xs[] = {-1.0f, -0.62f, -0.4f, -0.18f, 0.05f, 0.25f, 0.45f, 0.68f, 1.0f};
+        const float ys[] = {0.1f, 0.1f, -0.75f, 0.6f, -0.95f, 0.45f, -0.4f, 0.1f, 0.1f};
+        float pts[18];
+        for (int i = 0; i < 9; ++i) { pts[2 * i] = cx + xs[i] * w; pts[2 * i + 1] = cy + ys[i] * s; }
+        gfx_.polyline(pts, 9, t * 0.8f, c);
+        break;
+    }
+    case Icon::Settings: {
+        const float R = s * 0.62f;
+        for (int i = 0; i < 8; ++i) {
+            const float a = static_cast<float>(i) * 0.7853982f;
+            gfx_.line(cx + std::cos(a) * R * 0.6f, cy + std::sin(a) * R * 0.6f, cx + std::cos(a) * s, cy + std::sin(a) * s, t * 1.25f, c);
+        }
+        gfx_.circle(cx, cy, R, c);
+        gfx_.circle(cx, cy, R * 0.42f, Color(0x161C22FF));
+        break;
+    }
+    case Icon::View:
+        for (int i = -1; i <= 1; ++i)
+            for (int j = -1; j <= 1; ++j) {
+                const float x = cx + i * s * 0.72f, y = cy + j * s * 0.72f, h = s * 0.24f;
+                gfx_.rect({x - h, y - h, x + h, y + h}, c);
+            }
+        break;
+    case Icon::Left:
+        gfx_.line(cx + s * 0.35f, cy - s * 0.7f, cx - s * 0.35f, cy, t * 0.8f, c);
+        gfx_.line(cx - s * 0.35f, cy, cx + s * 0.35f, cy + s * 0.7f, t * 0.8f, c);
+        break;
+    case Icon::Right:
+        gfx_.line(cx - s * 0.35f, cy - s * 0.7f, cx + s * 0.35f, cy, t * 0.8f, c);
+        gfx_.line(cx + s * 0.35f, cy, cx - s * 0.35f, cy + s * 0.7f, t * 0.8f, c);
+        break;
+    }
 }
 
 float App::knob(int id, const LY::Knob& k, float value, float mn, float mx, Taper taper, float def, bool bipolar,
@@ -1088,31 +1198,25 @@ void App::frame() {
 // ------------------------------------------------------------------ transport
 void App::drawTransport() {
     const bool playing = eng_->isPlaying();
-    // Painted buttons stay; we light them and make them clickable.
-    if (button(1, R(LY::btnMenu)) || button(2, R(LY::btnTopLeft))) showMainMenu();
-    if (button(3, R(LY::btnRewind))) { eng_->seek(0); }
-    if (button(4, R(LY::btnPlay))) {
+    // Every button here is drawn live (the painted ones were cut out of the art).
+    if (hwButton(1, LY::btnMenu, Icon::Menu) || hwButton(2, LY::btnTopLeft, Icon::Menu, false, kCyan, 0.85f)) showMainMenu();
+    if (hwButton(3, LY::btnRewind, Icon::Rewind)) eng_->seek(loopOn_ ? loopA() : 0);
+    if (hwButton(4, LY::btnPlay, Icon::Play, playing)) {
         if (!loadedCount()) loadFolder();
         else eng_->play();
     }
-    if (button(5, R(LY::btnStop))) { if (!playing) eng_->seek(0); eng_->stop(); }
-    if (button(6, R(LY::btnRecord))) exportMaster();
-    if (button(7, R(LY::btnAnalyze))) { analyze_ = !analyze_; toast(analyze_ ? "Analyze: per-stem loudness shown on the lanes" : "Analyze off"); }
-    if (button(8, R(LY::btnSettings))) showSettingsMenu();
-    if (button(9, R(LY::btnView))) toggleFullscreen();
-    if (button(10, R(LY::btnTopRight))) showAbout();
-
-    if (playing) gfx_.roundRect(R(LY::btnPlay).inset(2), 6, Color(kCyan).alpha(0.22f));
-    if (exporting_) {
+    if (hwButton(5, LY::btnStop, Icon::Stop)) { if (!playing) eng_->seek(loopOn_ ? loopA() : 0); eng_->stop(); }
+    {
         const float blink = 0.5f + 0.5f * std::sin(static_cast<float>(now()) * 6.0f);
-        gfx_.roundRect(R(LY::btnRecord).inset(2), 6, Color(kRed).alpha(0.15f + 0.35f * blink));
+        if (hwButton(6, LY::btnRecord, Icon::Record, exporting_, Color(kRed).alpha(0.4f + 0.6f * blink))) exportMaster();
     }
-    if (hotId_ >= 1 && hotId_ <= 10) {
-        const LY::Box all[] = {LY::btnMenu, LY::btnTopLeft, LY::btnRewind, LY::btnPlay, LY::btnStop,
-                               LY::btnRecord, LY::btnAnalyze, LY::btnSettings, LY::btnView, LY::btnTopRight};
-        gfx_.roundRect(R(all[hotId_ - 1]).inset(1), 6, Color(0xFFFFFFFF).alpha(activeId_ == hotId_ ? 0.12f : 0.06f));
-    }
-    if (analyze_) gfx_.roundRect(R(LY::btnAnalyze).inset(2), 6, Color(kCyan).alpha(0.18f));
+    if (hwButton(11, LY::btnLoop, Icon::Loop, loopOn_)) toggleLoop();
+    if (hwButton(7, LY::btnAnalyze, Icon::Analyze, analyze_)) { analyze_ = !analyze_; toast(analyze_ ? "Analyze: per-stem loudness shown on the lanes" : "Analyze off"); }
+    if (hwButton(8, LY::btnSettings, Icon::Settings)) showSettingsMenu();
+    if (hwButton(9, LY::btnView, Icon::View, fullscreen_)) toggleFullscreen();
+    if (hwButton(10, LY::btnTopRight, Icon::Menu, false, kCyan, 0.85f)) showAbout();
+    if (hotId_ == 11) { tooltip_ = loopOn_ ? "LOOP on (L) - drag on the bar numbers to set the section" : "LOOP (L) - drag on the bar numbers to set the section";
+                        tipX_ = LY::btnLoop.x0 + 30; tipY_ = LY::btnLoop.y1 + 34; tipSec_ = curSec_; }
 
     // Time display (audible position = engine playhead minus plugin latency).
     const double lat = eng_->totalLatency();
@@ -1155,6 +1259,25 @@ void App::drawTransport() {
     }
 }
 
+// ------------------------------------------------------------------ loop
+std::uint64_t App::loopB() const {
+    const std::uint64_t len = songLength();
+    if (loopB_ > loopA_) return std::min(loopB_, len);
+    return len;
+}
+
+void App::setLoopRegion(std::uint64_t a, std::uint64_t b) { loopA_ = a; loopB_ = b; }
+
+void App::toggleLoop() {
+    loopOn_ = !loopOn_;
+    if (!loopOn_) { toast("LOOP off"); return; }
+    if (!loadedCount()) { toast("LOOP on - load stems, then drag on the bar numbers to pick the section"); return; }
+    const std::uint64_t ph = eng_->playhead();
+    eng_->setLoop(true, loopA(), loopB());
+    if (ph < loopA() || ph >= loopB()) eng_->seek(loopA());
+    toast(loopB_ > loopA_ ? "LOOP on" : "LOOP on: whole song - drag on the bar numbers to loop a section");
+}
+
 // ------------------------------------------------------------------ arrange
 void App::drawArrange() {
     const Rect lanes{LY::lanes.x0, LY::lanes.y0, LY::lanes.x1, LY::kRowsY1 - 4}, ruler = R(LY::ruler);
@@ -1181,8 +1304,65 @@ void App::drawArrange() {
         }
     }
 
-    // Seek by clicking / dragging the ruler or lanes.
-    const Rect seekArea{lx0, ruler.y0, lx1, lanes.y1};
+    // Loop section: highlighted on the ruler (cyan when LOOP is on), edges marked down the lanes.
+    if (len) {
+        eng_->setLoop(loopOn_, loopA(), loopB());
+        if (loopOn_ || loopB_ > loopA_) {
+            const float xa = lx0 + static_cast<float>(static_cast<double>(loopA()) / static_cast<double>(len)) * (lx1 - lx0);
+            const float xb = lx0 + static_cast<float>(static_cast<double>(loopB()) / static_cast<double>(len)) * (lx1 - lx0);
+            const Color lc = loopOn_ ? kCyan : kDim;
+            gfx_.rect({xa, ruler.y0 + 2, xb, ruler.y1 - 1}, lc.alpha(loopOn_ ? 0.30f : 0.16f));
+            gfx_.rect({xa, lanes.y0, xb, lanes.y1}, lc.alpha(loopOn_ ? 0.05f : 0.025f));
+            for (float x : {xa, xb}) {
+                gfx_.line(x, ruler.y0 + 2, x, ruler.y1, 2.5f, lc.alpha(0.95f));
+                gfx_.line(x, lanes.y0, x, lanes.y1, 1.0f, lc.alpha(loopOn_ ? 0.45f : 0.25f));
+            }
+        }
+    } else eng_->setLoop(false, 0, 0);
+
+    // Ruler: click = jump there; drag = set the loop section (snaps to whole bars, Shift = free) and turn LOOP on.
+    auto frameAt = [&](float x) {
+        return static_cast<std::uint64_t>(clampf((x - lx0) / (lx1 - lx0), 0, 1) * static_cast<double>(len));
+    };
+    const double barFrames = 4.0 * 60.0 / bpm_ * sr_;
+    auto snapBar = [&](std::uint64_t f, bool up) {
+        if (in_.shift || barFrames < 1.0) return f;
+        const double b = static_cast<double>(f) / barFrames;
+        return std::min<std::uint64_t>(len, static_cast<std::uint64_t>((up ? std::ceil(b - 1e-9) : std::floor(b + 1e-9)) * barFrames));
+    };
+    const Rect rulerHit{lx0, ruler.y0, lx1, ruler.y1};
+    if (len && rulerHit.contains(in_.mx, in_.my)) {
+        hotId_ = 31;
+        tooltip_ = "Click: jump here  -  drag: set the LOOP section (snaps to bars, Shift = free)";
+        tipX_ = in_.mx; tipY_ = ruler.y1 + 34; tipSec_ = curSec_;
+        if (in_.pressed) { activeId_ = 31; loopDragX0_ = in_.mx; loopDragging_ = false; }
+    }
+    if (activeId_ == 31) {
+        if (in_.down && std::fabs(in_.mx - loopDragX0_) > 6.0f) loopDragging_ = true;
+        if (loopDragging_ && len) {
+            std::uint64_t a = snapBar(frameAt(std::min(loopDragX0_, in_.mx)), false);
+            std::uint64_t b = snapBar(frameAt(std::max(loopDragX0_, in_.mx)), true);
+            const std::uint64_t minLen = in_.shift || barFrames < 1.0 ? static_cast<std::uint64_t>(sr_ * 0.05) : static_cast<std::uint64_t>(barFrames);
+            if (b < a + minLen) b = std::min<std::uint64_t>(len, a + minLen);
+            if (b < a + minLen) a = b > minLen ? b - minLen : 0;   // dragged against the song's end
+            setLoopRegion(a, b);
+            loopOn_ = true;
+        }
+        if (in_.released) {
+            if (!loopDragging_) eng_->seek(frameAt(in_.mx));
+            else {
+                const std::uint64_t ph = eng_->playhead();
+                if (ph < loopA() || ph >= loopB()) eng_->seek(loopA());
+                toast(fmt("LOOP: bars %.0f", std::floor(static_cast<double>(loopA()) / barFrames + 1e-9) + 1.0) +
+                      fmt(" to %.0f", std::ceil(static_cast<double>(loopB()) / barFrames - 1e-9)) + "  (L or the loop button turns it off)");
+            }
+            loopDragging_ = false;
+            activeId_ = 0;
+        }
+    }
+
+    // Lanes: click / drag to move the playhead.
+    const Rect seekArea{lx0, lanes.y0, lx1, lanes.y1};
     if (len && seekArea.contains(in_.mx, in_.my) && in_.pressed) activeId_ = 30;
     if (activeId_ == 30) {
         const double f = clampf((in_.mx - lx0) / (lx1 - lx0), 0, 1);
@@ -1320,8 +1500,8 @@ void App::drawDestroyer() {
     static const float amounts[] = {0.35f, 0.6f, 1.0f};
     const float amt = ds->param(ArtifactProcessor::kShimmer).target();
     int mode = amt < 0.47f ? 0 : (amt < 0.8f ? 1 : 2);
-    if (button(302, R(LY::dsPrev))) mode = (mode + 2) % 3, ds->param(ArtifactProcessor::kShimmer).set(amounts[mode]);
-    if (button(303, R(LY::dsNext)) || button(304, R(LY::dsHeaderBox))) mode = (mode + 1) % 3, ds->param(ArtifactProcessor::kShimmer).set(amounts[mode]);
+    if (hwButton(302, LY::dsPrev, Icon::Left)) mode = (mode + 2) % 3, ds->param(ArtifactProcessor::kShimmer).set(amounts[mode]);
+    if (hwButton(303, LY::dsNext, Icon::Right) || button(304, R(LY::dsHeaderBox))) mode = (mode + 1) % 3, ds->param(ArtifactProcessor::kShimmer).set(amounts[mode]);
     gfx_.textIn(R(LY::dsHeaderBox), modes[mode], Font::Normal, kText);
 
     // Spectrogram of the selected stem (post-processing, live while playing).
@@ -1371,8 +1551,8 @@ void App::drawDestroyer() {
     static const char* res[] = {"1024", "2048", "4096"};
     int ri = static_cast<int>(std::lround(ds->param(ArtifactProcessor::kRes).target()));
     int nri = ri;
-    if (button(305, R(LY::dsResPrev))) nri = (ri + 2) % 3;
-    if (button(306, R(LY::dsResNext)) || button(307, R(LY::dsResBox))) nri = (ri + 1) % 3;
+    if (hwButton(305, LY::dsResPrev, Icon::Left)) nri = (ri + 2) % 3;
+    if (hwButton(306, LY::dsResNext, Icon::Right) || button(307, R(LY::dsResBox))) nri = (ri + 1) % 3;
     if (nri != ri) {
         ChainState cs = captureStem(selected_);
         for (auto& p : cs) if (p.id == "hc.artifact") p.values[ArtifactProcessor::kRes] = static_cast<float>(nri);
@@ -1406,8 +1586,8 @@ void App::drawResonance() {
     static const char* modes[] = {"SOFT", "NORMAL", "FAST"};
     auto& mp = rs->param(ResonanceProcessor::kMode);
     int m = static_cast<int>(std::lround(mp.target()));
-    if (button(401, R(LY::rsPrev))) mp.set(static_cast<float>((m + 2) % 3));
-    if (button(402, R(LY::rsNext)) || button(403, R(LY::rsHeaderBox))) mp.set(static_cast<float>((m + 1) % 3));
+    if (hwButton(401, LY::rsPrev, Icon::Left)) mp.set(static_cast<float>((m + 2) % 3));
+    if (hwButton(402, LY::rsNext, Icon::Right) || button(403, R(LY::rsHeaderBox))) mp.set(static_cast<float>((m + 1) % 3));
     gfx_.textIn(R(LY::rsHeaderBox), modes[std::clamp(static_cast<int>(std::lround(mp.target())), 0, 2)], Font::Normal, kText);
 
     if (rs->view().update()) resView_ = rs->view().read_buffer();
@@ -1527,8 +1707,8 @@ void App::drawMastering() {
         normalize_ = kPresets[preset_].normalize;
         if (normalize_) target_ = kPresets[preset_].lufs;
     };
-    if (button(601, R(LY::msPrev))) setPreset(preset_ - 1);
-    if (button(602, R(LY::msNext)) || button(603, R(LY::msHeaderBox))) setPreset(preset_ + 1);
+    if (hwButton(601, LY::msPrev, Icon::Left)) setPreset(preset_ - 1);
+    if (hwButton(602, LY::msNext, Icon::Right) || button(603, R(LY::msHeaderBox))) setPreset(preset_ + 1);
     gfx_.textIn(R(LY::msHeaderBox), kPresets[preset_].name, Font::Normal, kText);
 
     const auto& L = master_.loudness;
@@ -1751,6 +1931,7 @@ LRESULT App::wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         else if (w == VK_F9) setPage(page_ == Page::Show ? Page::Console : Page::Show);
         else if (w == VK_ESCAPE && zoom_ >= 0) zoom_ = -1;
         else if (w == VK_F11 || (w == VK_ESCAPE && fullscreen_)) toggleFullscreen();
+        else if (!ctrl && w == 'L') toggleLoop();
         else if (ctrl && w == 'L' && !(GetKeyState(VK_SHIFT) & 0x8000)) loadFolder();
         else if (ctrl && w == 'L') loadFiles(openFilesDialog(hwnd_, L"Load Stems (up to 13 WAV files)", {L"WAV audio (*.wav)", L"*.wav"}, true));
         else if (ctrl && w == 'O') openSession();

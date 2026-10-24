@@ -250,6 +250,8 @@ struct Session {
     double bpm = 120, targetLufs = -14;
     bool normalize = true;
     int glueMode = 0, preset = 0;
+    bool loopOn = false;
+    std::uint64_t loopA = 0, loopB = 0;   // source frames; loopB == 0 = whole song
 };
 
 inline void writeChain(std::ostream& o, const char* tag, int slot, const ChainState& c) {
@@ -266,6 +268,7 @@ inline std::string saveSession(const std::wstring& file, const Session& s) {
     o << "HYBRIDCORE_SESSION 1\n";
     o << "bpm " << s.bpm << "\ntarget " << s.targetLufs << "\nnormalize " << (s.normalize ? 1 : 0)
       << "\nglue " << s.glueMode << "\npreset " << s.preset << '\n';
+    o << "loop " << (s.loopOn ? 1 : 0) << ' ' << s.loopA << ' ' << s.loopB << '\n';
     for (std::size_t i = 0; i < s.paths.size(); ++i) {
         if (!s.paths[i].empty()) o << "stem " << i << ' ' << narrow(s.paths[i]) << '\n';
         const auto& st = s.strips[i];
@@ -295,6 +298,7 @@ inline std::string loadSession(const std::wstring& file, Session& s, std::size_t
         else if (tag == "normalize") { int v = 1; ls >> v; s.normalize = v != 0; }
         else if (tag == "glue") ls >> s.glueMode;
         else if (tag == "preset") ls >> s.preset;
+        else if (tag == "loop") { int on = 0; ls >> on >> s.loopA >> s.loopB; s.loopOn = on != 0; }
         else if (tag == "stem") {
             std::size_t i = 0; ls >> i;
             std::string rest; std::getline(ls, rest);
