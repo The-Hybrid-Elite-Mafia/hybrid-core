@@ -201,6 +201,7 @@ private:
 
     // files
     void loadFiles(const std::vector<std::wstring>& files, int slot = -1);
+    void loadFolder();
     void clearSlot(int s);
     void clearAll();
     void saveSessionAs();
@@ -348,7 +349,7 @@ bool App::init(HINSTANCE inst, int show) {
     rebuildEngine(48000.0);
     ShowWindow(hwnd_, show == SW_SHOWMINIMIZED || show == SW_MINIMIZE ? show : SW_SHOWMAXIMIZED);   // 16:9 faceplate: open maximized
     UpdateWindow(hwnd_);
-    toast("Drop up to 13 WAV stems on the window, or use the menu (≡) → Load Stems");
+    toast("Click the box in the middle to load a whole stem folder at once");
     return true;
 }
 
@@ -664,6 +665,18 @@ void App::loadFiles(const std::vector<std::wstring>& files, int slot) {
     if (!errors.empty()) MessageBoxW(hwnd_, widen("Some files weren't loaded:\n\n" + errors).c_str(), L"Hybrid Core", MB_ICONWARNING);
 }
 
+// Pick a folder → every WAV in it loads at once (replacing what's loaded).
+void App::loadFolder() {
+    if (exporting_) { toast("Wait for the export to finish"); return; }
+    const std::wstring dir = pickFolderDialog(hwnd_, L"Pick the stem folder (all WAVs in it load together)");
+    if (dir.empty()) return;
+    std::vector<std::wstring> files = wavsInFolder(dir);
+    if (files.empty()) { MessageBoxW(hwnd_, L"No WAV files in that folder.\n\nIf the stems are still in a .zip, open the zip and click Extract all first.", L"Hybrid Core", MB_ICONINFORMATION); return; }
+    if (files.size() > kNumStems) files.resize(kNumStems);
+    if (loadedCount()) clearAll();
+    loadFiles(files);
+}
+
 void App::clearSlot(int s) {
     if (exporting_) { toast("Wait for the export to finish"); return; }
     stopAudio();
@@ -791,13 +804,14 @@ void App::onExportDone() {
 
 // ====================================================================================== menus
 enum MenuId {
-    ID_LOAD = 100, ID_CLEAR_ALL, ID_OPEN_SESSION, ID_SAVE_SESSION, ID_EXPORT, ID_EXIT,
+    ID_LOAD = 100, ID_LOAD_FOLDER = 99, ID_CLEAR_ALL = 101, ID_OPEN_SESSION, ID_SAVE_SESSION, ID_EXPORT, ID_EXIT,
     ID_SHARED, ID_EXCLUSIVE, ID_RESET_METERS, ID_SLOT_LOAD, ID_SLOT_CLEAR, ID_SLOT_RESET, ID_VIEW_TOGGLE
 };
 
 void App::showMainMenu() {
     HMENU m = CreatePopupMenu();
-    AppendMenuW(m, MF_STRING, ID_LOAD, L"Load Stems…\tCtrl+L");
+    AppendMenuW(m, MF_STRING, ID_LOAD_FOLDER, L"Load Stem Folder (all at once)…\tCtrl+L");
+    AppendMenuW(m, MF_STRING, ID_LOAD, L"Add Stem Files…\tCtrl+Shift+L");
     AppendMenuW(m, MF_STRING | (loadedCount() ? 0 : MF_GRAYED), ID_CLEAR_ALL, L"Clear All Stems");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, ID_OPEN_SESSION, L"Open Session…\tCtrl+O");
@@ -812,6 +826,7 @@ void App::showMainMenu() {
     const int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, p.x, p.y, 0, hwnd_, nullptr);
     DestroyMenu(m);
     switch (cmd) {
+    case ID_LOAD_FOLDER: loadFolder(); break;
     case ID_LOAD: loadFiles(openFilesDialog(hwnd_, L"Load Stems (up to 13 WAV files)", {L"WAV audio (*.wav)", L"*.wav"}, true)); break;
     case ID_CLEAR_ALL: clearAll(); break;
     case ID_OPEN_SESSION: openSession(); break;
@@ -1020,7 +1035,7 @@ void App::drawTransport() {
     if (button(1, R(LY::btnMenu)) || button(2, R(LY::btnTopLeft))) showMainMenu();
     if (button(3, R(LY::btnRewind))) { eng_->seek(0); }
     if (button(4, R(LY::btnPlay))) {
-        if (!loadedCount()) toast("Load some stems first (menu ≡ → Load Stems, or drop WAVs here)");
+        if (!loadedCount()) loadFolder();
         else eng_->play();
     }
     if (button(5, R(LY::btnStop))) { if (!playing) eng_->seek(0); eng_->stop(); }
@@ -1211,9 +1226,13 @@ void App::drawArrange() {
     // Empty-state hint.
     if (!loadedCount()) {
         const Rect hint{lanes.x0 + 120, lanes.cy() - 50, lanes.x1 - 120, lanes.cy() + 50};
-        gfx_.roundRect(hint, 10, 0x000000B0);
+        const bool hHot = hint.contains(in_.mx, in_.my);
+        if (hHot) hotId_ = 40;
+        gfx_.roundRect(hint, 10, hHot ? Color(0x0E2430E0) : Color(0x000000B0));
+        if (hHot) gfx_.rectOutline(hint, Color(kCyan).alpha(0.6f), 1.5f);
+        if (hHot && in_.released && activeId_ == 0) loadFolder();
         gfx_.textIn({hint.x0, hint.y0 + 8, hint.x1, hint.cy()}, "DROP UP TO 13 WAV STEMS HERE", Font::Large, kCyan);
-        gfx_.textIn({hint.x0, hint.cy(), hint.x1, hint.y1 - 8}, "or click the menu button → Load Stems", Font::Normal, kDim);
+        gfx_.textIn({hint.x0, hint.cy(), hint.x1, hint.y1 - 8}, "or CLICK HERE to pick a stem folder - every WAV in it loads at once", Font::Normal, kDim);
     }
 
     // Playhead.
@@ -1608,6 +1627,7 @@ LRESULT App::wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (w == VK_SPACE) { if (eng_->isPlaying()) eng_->stop(); else if (loadedCount()) eng_->play(); }
         else if (w == VK_HOME) eng_->seek(0);
         else if (w == VK_F11 || (w == VK_ESCAPE && fullscreen_)) toggleFullscreen();
+        else if (ctrl && w == 'L' && !(GetKeyState(VK_SHIFT) & 0x8000)) loadFolder();
         else if (ctrl && w == 'L') loadFiles(openFilesDialog(hwnd_, L"Load Stems (up to 13 WAV files)", {L"WAV audio (*.wav)", L"*.wav"}, true));
         else if (ctrl && w == 'O') openSession();
         else if (ctrl && w == 'S') saveSessionAs();

@@ -21,7 +21,7 @@ The window is the HEM faceplate in 16:9 (title on top, console left, four rack p
 
 | Part | What it does |
 |---|---|
-| Track rows 1–13 | Drop WAV stems on the window (or ≡ → Load Stems). Click a name to select it; drag left/right for volume; double-click for 0 dB; right-click for load/remove. M = mute, S = solo. |
+| Track rows 1–13 | Click the box in the middle (or ≡ → Load Stem Folder, Ctrl+L) and pick the stem folder: every WAV in it loads at once. You can also drop WAVs on the window. Click a name to select it; drag left/right for volume; double-click for 0 dB; right-click for load/remove. M = mute, S = solo. |
 | Transport | ≡ menu · ⏮ rewind · ▶ play · ■ stop · ● export master · time · tempo (drag to set) · master level · analyze (per-stem LUFS on the lanes) · ⚙ audio settings · ⊞ full screen |
 | HEM STFT DESTROYER | Artifact repair for the selected stem: LIGHT/MEDIUM/HEAVY, STFT resolution, Threshold, Bleed (HF stereo phase fix), Decay. Live spectrogram. The switch or the title toggles bypass. |
 | HEM RESONANCE | Dynamic harsh-resonance suppressor: Sensitivity, Frequency, Bandwidth, Reduction, Compensation, SOFT/NORMAL/FAST. The screen shows the spectrum and the live cut curve. |

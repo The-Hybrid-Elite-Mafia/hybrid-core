@@ -100,6 +100,47 @@ inline std::wstring saveFileDialog(HWND owner, const wchar_t* title, const Dialo
     return out;
 }
 
+// Folder picker (one click → a whole Suno stem folder).
+inline std::wstring pickFolderDialog(HWND owner, const wchar_t* title) {
+    std::wstring out;
+    IFileOpenDialog* dlg = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dlg)))) return out;
+    DWORD opts = 0;
+    dlg->GetOptions(&opts);
+    dlg->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
+    dlg->SetTitle(title);
+    if (SUCCEEDED(dlg->Show(owner))) {
+        IShellItem* it = nullptr;
+        if (SUCCEEDED(dlg->GetResult(&it)) && it) {
+            PWSTR p = nullptr;
+            if (SUCCEEDED(it->GetDisplayName(SIGDN_FILESYSPATH, &p)) && p) { out = p; CoTaskMemFree(p); }
+            it->Release();
+        }
+    }
+    dlg->Release();
+    return out;
+}
+
+// Every .wav directly inside a folder, sorted by name. Exported masters
+// ("... HEM Master ...") are skipped so a re-load never pulls the mix back in.
+inline std::vector<std::wstring> wavsInFolder(const std::wstring& dir) {
+    std::vector<std::wstring> out;
+    std::error_code ec;
+    for (const auto& e : std::filesystem::directory_iterator(std::filesystem::path(dir), ec)) {
+        if (!e.is_regular_file(ec)) continue;
+        std::wstring ext = e.path().extension().wstring();
+        for (auto& c : ext) c = static_cast<wchar_t>(towlower(c));
+        if (ext != L".wav") continue;
+        std::wstring name = e.path().filename().wstring();
+        std::wstring low = name;
+        for (auto& c : low) c = static_cast<wchar_t>(towlower(c));
+        if (low.find(L"hem master") != std::wstring::npos) continue;
+        out.push_back(e.path().wstring());
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 // ---------------------------------------------------------------- image decode
 // Decodes an image held in memory (JPEG/PNG…) to RGBA8 with WIC.
 inline bool decodeImage(const void* data, std::size_t size, std::vector<std::uint8_t>& rgba, int& w, int& h) {
