@@ -186,6 +186,7 @@ def write_header():
     L.append(f"inline constexpr float kRow0 = {CONSOLE_ROWS[0] + 4 + step / 2:.3f}f, kRowStep = {step:.3f}f, kRowH = {step - 4:.3f}f;")
     L.append(f"inline constexpr float kCanvasW = {CANVAS_W}.0f, kCanvasH = {CANVAS_H}.0f;")
     L.append(f"inline constexpr float kConsoleDx = {CONSOLE_DX}.0f, kConsoleDy = {CONSOLE_DY}.0f;")
+    L.append(f"inline constexpr float kMidY0 = {BAND_A_H}.0f, kMidY1 = {BAND_A_H + MID_H}.0f;   // canvas band holding the console (left) and the 2x2 rack (right)")
     L.append(f"inline constexpr float kPanelsDx = {PANELS_DX}.0f, kPanelsDy = {PANELS_DY}.0f;")
     L.append(f"inline constexpr Box rowM{{{ROW_M[0]}.0f, 0.0f, {ROW_M[1]}.0f, 0.0f}}, rowS{{{ROW_S[0]}.0f, 0.0f, {ROW_S[1]}.0f, 0.0f}};")
     L.append("} // namespace hc::studio::layout")

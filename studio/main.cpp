@@ -247,6 +247,14 @@ private:
     enum class Sec { Canvas, Console, Panels };
     Sec curSec_ = Sec::Canvas, tipSec_ = Sec::Console;
     void setSection(Sec s);
+    // Pages: CONSOLE (tracks fill the window), RACK (the four panels; double-click one to fill the window
+    // with it), SHOW (the whole faceplate, title and base included). Same controls, only the view changes.
+    enum class Page { Console, Rack, Show };
+    Page page_ = Page::Console;
+    int zoom_ = -1;   // RACK: the panel filling the window (0 STFT DESTROYER, 1 RESONANCE, 2 TRANSIENT, 3 MASTERING), -1 = all four
+    Rect viewRect() const;
+    void setPage(Page p);
+    void drawPageTabs();
     void toggleFullscreen();
     bool fullscreen_ = false;
     WINDOWPLACEMENT savedPlacement_{};
@@ -322,8 +330,9 @@ bool App::init(HINSTANCE inst, int show) {
     RECT work{};
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
     const float ww = static_cast<float>(work.right - work.left), wh = static_cast<float>(work.bottom - work.top);
-    const float s = std::min(ww * 0.96f / LY::kCanvasW, wh * 0.96f / LY::kCanvasH);
-    RECT rc{0, 0, static_cast<LONG>(LY::kCanvasW * s), static_cast<LONG>(LY::kCanvasH * s)};
+    const Rect v = viewRect();   // the starting page (CONSOLE)
+    const float s = std::min(ww * 0.96f / v.w(), wh * 0.96f / v.h());
+    RECT rc{0, 0, static_cast<LONG>(v.w() * s), static_cast<LONG>(v.h() * s)};
     AdjustWindowRectEx(&rc, WS_OVERLAPPEDWINDOW, FALSE, 0);
     const int w = rc.right - rc.left, h = rc.bottom - rc.top;
     hwnd_ = CreateWindowExW(WS_EX_ACCEPTFILES, wc.lpszClassName, L"THE HYBRID CORE 2.0 — Hybrid Elite Mafia", WS_OVERLAPPEDWINDOW,
@@ -941,12 +950,35 @@ float App::knob(int id, const LY::Knob& k, float value, float mn, float mx, Tape
 }
 
 // ====================================================================================== frame
+Rect App::viewRect() const {
+    constexpr float half = LY::kCanvasW * 0.5f, midH = LY::kMidY1 - LY::kMidY0;
+    switch (page_) {
+    case Page::Console: return {0, LY::kMidY0, half, LY::kMidY1};
+    case Page::Rack:
+        if (zoom_ >= 0) {
+            const float x0 = half + static_cast<float>(zoom_ % 2) * half * 0.5f, y0 = LY::kMidY0 + static_cast<float>(zoom_ / 2) * midH * 0.5f;
+            return {x0, y0, x0 + half * 0.5f, y0 + midH * 0.5f};
+        }
+        return {half, LY::kMidY0, LY::kCanvasW, LY::kMidY1};
+    case Page::Show: break;
+    }
+    return {0, 0, LY::kCanvasW, LY::kCanvasH};
+}
+
+void App::setPage(Page p) {
+    if (p != Page::Rack) zoom_ = -1;
+    if (p == Page::Rack && page_ != Page::Rack) toast("RACK: double-click a panel to fill the window with it  -  Tab = CONSOLE / RACK");
+    page_ = p;
+    activeId_ = 0;
+}
+
 void App::updateTransform() {
     const float W = static_cast<float>(gfx_.width()), H = static_cast<float>(gfx_.height());
-    const float s = std::min(W / LY::kCanvasW, H / LY::kCanvasH);
+    const Rect v = viewRect();
+    const float s = std::min(W / v.w(), H / v.h());
     viewScale_ = s;
-    viewOffX_ = 0.5f * (W - LY::kCanvasW * s);
-    viewOffY_ = 0.5f * (H - LY::kCanvasH * s);
+    viewOffX_ = 0.5f * (W - v.w() * s) - v.x0 * s;
+    viewOffY_ = 0.5f * (H - v.h() * s) - v.y0 * s;
     gfx_.setSkinView({0, 0, LY::kCanvasW, LY::kCanvasH});
     setSection(Sec::Canvas);
 }
@@ -1018,6 +1050,17 @@ void App::frame() {
     drawResonance();
     drawTransient();
     drawMastering();
+    drawPageTabs();
+    // RACK: double-click on a panel (not on a control) fills the window with it; again goes back to all four.
+    if (page_ == Page::Rack && in_.dbl && hotId_ == 0 && activeId_ == 0) {
+        if (zoom_ >= 0) zoom_ = -1;
+        else {
+            // Panels-section coordinates: the 2x2 rack spans x 0..1438 and the mid band's height below its top.
+            const float top = LY::kMidY0 - LY::kPanelsDy, midH = LY::kMidY1 - LY::kMidY0;
+            if (in_.mx >= 0 && in_.mx < LY::kCanvasW * 0.5f && in_.my >= top && in_.my < top + midH)
+                zoom_ = (in_.mx < LY::kCanvasW * 0.25f ? 0 : 1) + (in_.my < top + midH * 0.5f ? 0 : 2);
+        }
+    }
     drawOverlays();
     gfx_.endFrame();
 
@@ -1570,9 +1613,11 @@ void App::drawMastering() {
 
 // ------------------------------------------------------------------ overlays
 void App::drawOverlays() {
-    setSection(Sec::Console);
+    setSection(Sec::Canvas);
+    const Rect v = viewRect();
+    const float vs = v.w() / (LY::kCanvasW * 0.5f);   // keep the boxes the same size on screen on every page
     if (exporting_) {
-        const Rect b{460, 1090, 1220, 1210};
+        const Rect b{v.cx() - 380 * vs, v.y1 - 190 * vs, v.cx() + 380 * vs, v.y1 - 70 * vs};
         gfx_.roundRect(b, 12, 0x000000E0);
         gfx_.rectOutline(b, Color(kCyan).alpha(0.5f), 2);
         const double p = exportProgress_.load();
@@ -1584,7 +1629,7 @@ void App::drawOverlays() {
     }
     if (!toast_.empty() && now() < toastUntil_) {
         const float w = gfx_.textWidth(toast_, Font::Normal) + 40;
-        const Rect t{719 - w / 2, LY::kRowsY1 - 70, 719 + w / 2, LY::kRowsY1 - 28};
+        const Rect t{v.cx() - w / 2, v.y1 - 70 * vs, v.cx() + w / 2, v.y1 - 70 * vs + 42};
         gfx_.roundRect(t, 8, 0x000000D8);
         gfx_.rectOutline(t, Color(kCyan).alpha(0.35f), 1.5f);
         gfx_.textIn(t, toast_, Font::Normal, kText);
@@ -1598,6 +1643,33 @@ void App::drawOverlays() {
         gfx_.roundRect(t, 5, 0x05080BF0);
         gfx_.rectOutline(t, Color(kCyan).alpha(0.5f), 1.2f);
         gfx_.textIn(t, tooltip_, Font::Small, kText);
+    }
+}
+
+void App::drawPageTabs() {
+    // CONSOLE / RACK / SHOW, top-right of the window, on every page.
+    setSection(Sec::Canvas);
+    const Rect v = viewRect();
+    // Only the page shows: cover whatever of the canvas falls outside it (the window's spare edges).
+    constexpr float kFar = 100000.0f;
+    const Color black = 0x040506FF;
+    gfx_.rect({-kFar, -kFar, v.x0, kFar}, black);
+    gfx_.rect({v.x1, -kFar, kFar, kFar}, black);
+    gfx_.rect({v.x0, -kFar, v.x1, v.y0}, black);
+    gfx_.rect({v.x0, v.y1, v.x1, kFar}, black);
+    // Sized in canvas units like the text in them, so text and box always match (a zoomed panel shows them bigger).
+    const float px = 1.0f;
+    const float tw = gfx_.textWidth("CONSOLE", Font::Small) + 34 * px, th = gfx_.lineHeight(Font::Small) + 12 * px, gap = 6 * px;
+    const char* names[] = {"CONSOLE", "RACK", "SHOW"};
+    const Page pages[] = {Page::Console, Page::Rack, Page::Show};
+    for (int i = 0; i < 3; ++i) {
+        const float x1 = v.x1 - 10 * px - static_cast<float>(2 - i) * (tw + gap);
+        const Rect r{x1 - tw, v.y0 + 8 * px, x1, v.y0 + 8 * px + th};
+        const bool on = page_ == pages[i];
+        if (button(9001 + i, r)) setPage(pages[i]);
+        gfx_.roundRect(r, 6 * px, on ? Color(kCyan).alpha(0.85f) : Color(0x05080BE0));
+        gfx_.rectOutline(r, Color(kCyan).alpha(on ? 0.9f : (hotId_ == 9001 + i ? 0.8f : 0.4f)), 1.5f * px);
+        gfx_.textIn(r, names[i], Font::Small, on ? Color(0x041016FF) : kText);
     }
 }
 
@@ -1626,6 +1698,9 @@ LRESULT App::wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
         if (w == VK_SPACE) { if (eng_->isPlaying()) eng_->stop(); else if (loadedCount()) eng_->play(); }
         else if (w == VK_HOME) eng_->seek(0);
+        else if (w == VK_TAB) setPage(page_ == Page::Console ? Page::Rack : Page::Console);
+        else if (w == VK_F9) setPage(page_ == Page::Show ? Page::Console : Page::Show);
+        else if (w == VK_ESCAPE && zoom_ >= 0) zoom_ = -1;
         else if (w == VK_F11 || (w == VK_ESCAPE && fullscreen_)) toggleFullscreen();
         else if (ctrl && w == 'L' && !(GetKeyState(VK_SHIFT) & 0x8000)) loadFolder();
         else if (ctrl && w == 'L') loadFiles(openFilesDialog(hwnd_, L"Load Stems (up to 13 WAV files)", {L"WAV audio (*.wav)", L"*.wav"}, true));

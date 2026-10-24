@@ -75,6 +75,7 @@ inline constexpr float kRowsY0 = 690.0f, kRowsY1 = 1335.0f;
 inline constexpr float kRow0 = 718.500f, kRowStep = 49.000f, kRowH = 45.000f;
 inline constexpr float kCanvasW = 2876.0f, kCanvasH = 1618.0f;
 inline constexpr float kConsoleDx = 0.0f, kConsoleDy = -98.0f;
+inline constexpr float kMidY0 = 354.0f, kMidY1 = 1264.0f;   // canvas band holding the console (left) and the 2x2 rack (right)
 inline constexpr float kPanelsDx = 1438.0f, kPanelsDy = -932.0f;
 inline constexpr Box rowM{243.0f, 0.0f, 271.0f, 0.0f}, rowS{276.0f, 0.0f, 305.0f, 0.0f};
 } // namespace hc::studio::layout
