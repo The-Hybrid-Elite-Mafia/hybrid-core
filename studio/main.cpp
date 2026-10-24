@@ -148,6 +148,28 @@ struct Slot {
     float dotLevel = 0;
 };
 
+// Suno names every stem "<Song> (<Part>)". When all loaded stems share a
+// prefix, rows show only the part ("Bass", "Drums") and the song title is
+// used for export / session names.
+std::string trimName(std::string s) {
+    auto junk = [](char c) { return c == ' ' || c == '(' || c == ')' || c == '-' || c == '_' || c == '[' || c == ']' || c == '.'; };
+    while (!s.empty() && junk(s.front())) s.erase(s.begin());
+    while (!s.empty() && junk(s.back())) s.pop_back();
+    return s;
+}
+std::string commonPrefix(const std::vector<std::string>& v) {
+    if (v.empty()) return {};
+    std::string p = v[0];
+    for (const auto& s : v) {
+        std::size_t i = 0;
+        while (i < p.size() && i < s.size() && p[i] == s[i]) ++i;
+        p.resize(i);
+    }
+    // cut back to a word boundary so "Two hundred forty days (B" → "Two hundred forty days ("
+    while (!p.empty() && p.back() != ' ' && p.back() != '(' && p.back() != '-' && p.back() != '_') p.pop_back();
+    return p;
+}
+
 enum class Glue { Clean = 0, Punch = 1, Loud = 2 };
 
 struct TargetPreset { const char* name; double lufs; bool normalize; };
@@ -208,6 +230,8 @@ private:
     void showAbout();
     void stemContextMenu(int s);
     Slot& sel() { return slots_[static_cast<std::size_t>(selected_)]; }
+    std::string shownName(int i) const;
+    std::string songTitle() const;
 
     HWND hwnd_ = nullptr;
     Renderer gfx_;
@@ -550,6 +574,31 @@ void App::rebuildEngine(double sr, const Session* fromSession) {
     startAudio();
 }
 
+
+std::string App::shownName(int i) const {
+    const Slot& s = slots_[static_cast<std::size_t>(i)];
+    if (!s.loaded) return {};
+    std::vector<std::string> names;
+    for (const auto& x : slots_) if (x.loaded) names.push_back(x.name);
+    if (names.size() < 2) return s.name;
+    const std::string p = commonPrefix(names);
+    if (p.size() < 4 || p.size() >= s.name.size()) return s.name;
+    const std::string part = trimName(s.name.substr(p.size()));
+    return part.empty() ? s.name : part;
+}
+
+std::string App::songTitle() const {
+    std::vector<std::string> names;
+    for (const auto& x : slots_) if (x.loaded) names.push_back(x.name);
+    if (names.empty()) return "HEM";
+    std::string t = names.size() > 1 ? trimName(commonPrefix(names)) : names[0];
+    if (names.size() == 1) {   // "Song (Vocals)" → "Song"
+        if (const auto b = t.rfind(" ("); b != std::string::npos && t.back() == ')') t = t.substr(0, b);
+    }
+    t = trimName(t);
+    return t.empty() ? std::string("HEM") : t;
+}
+
 // ====================================================================================== files
 int App::loadedCount() const { int n = 0; for (auto& s : slots_) n += s.loaded ? 1 : 0; return n; }
 std::uint64_t App::songLength() const { std::uint64_t n = 0; for (auto& s : slots_) if (s.loaded) n = std::max(n, s.audio.frames()); return n; }
@@ -643,8 +692,7 @@ void App::saveSessionAs() {
     }
     s.master = captureMaster();
     s.bpm = bpm_; s.targetLufs = target_; s.normalize = normalize_; s.glueMode = static_cast<int>(glueMode_); s.preset = preset_;
-    std::wstring def = L"HEM Session";
-    if (slots_[0].loaded) def = widen(slots_[0].name) + L" Session";
+    const std::wstring def = widen(songTitle()) + L" - HEM Session";
     const std::wstring path = saveFileDialog(hwnd_, L"Save Hybrid Core Session", {L"Hybrid Core Session (*.hcs)", L"*.hcs"}, L"hcs",
                                              sessionPath_.empty() ? def : sessionPath_);
     if (path.empty()) return;
@@ -684,8 +732,7 @@ void App::openSession() {
 void App::exportMaster() {
     if (exporting_) { exportCancel_ = true; toast("Cancelling export…"); return; }
     if (loadedCount() == 0) { toast("Load some stems first"); return; }
-    std::wstring def = L"HEM Master";
-    for (auto& s : slots_) if (s.loaded) { def = widen(s.name) + L" - HEM Master"; break; }
+    const std::wstring def = widen(songTitle()) + L" - HEM Master";
     const std::wstring path = saveFileDialog(hwnd_, L"Export Master (24-bit WAV)", {L"WAV audio (*.wav)", L"*.wav"}, L"wav", def);
     if (path.empty()) return;
     RenderJob job;
@@ -1052,7 +1099,7 @@ void App::drawArrange() {
         const bool audible = !st.mute.load() && (!anySolo || st.solo.load());
         gfx_.circle(116, cy - 3, 9.0f, base.alpha(0.12f + 0.45f * s.dotLevel));
         gfx_.circle(116, cy - 3, 5.5f, s.loaded ? base : Color(0x33414BFF));
-        gfx_.textIn({128, cy - 17, 236, cy + 8}, s.loaded ? s.name : std::string("empty"), Font::Normal, s.loaded ? kText : Color(0x46555FFF), Align::Left);
+        gfx_.textIn({128, cy - 17, 236, cy + 8}, s.loaded ? shownName(i) : std::string("empty"), Font::Normal, s.loaded ? kText : Color(0x46555FFF), Align::Left);
         // volume bar (fader −60…+6 dB)
         const float fdb = st.faderDb.target();
         const float vf = clampf((fdb + 60.0f) / 66.0f, 0, 1);
@@ -1191,7 +1238,8 @@ void App::drawDestroyer() {
         gfx_.line(area.x0, y, area.x0 + 10, y, 1.0f, kDim);
         gfx_.text(area.x0 + 13, y - 9, f >= 1000 ? fmt("%.0fk", f / 1000) : fmt("%.0f", f), Font::Small, Color(kDim).alpha(0.9f));
     }
-    gfx_.text(area.x1 - gfx_.textWidth(sel().loaded ? sel().name : "", Font::Small) - 6, area.y0 + 4, sel().loaded ? sel().name : "", Font::Small, kText);
+    const std::string selName = sel().loaded ? shownName(selected_) : std::string();
+    gfx_.text(area.x1 - gfx_.textWidth(selName, Font::Small) - 6, area.y0 + 4, selName, Font::Small, kText);
     const auto& t = ds->telemetry();
     gfx_.roundRect({area.x0 + 62, area.y1 - 24, area.x0 + 470, area.y1 - 2}, 4, 0x000000B0);
     gfx_.text(area.x0 + 70, area.y1 - 22, fmt("HF jitter %.1f dB", t.hfJitterDb.load()) + fmt("   HF change %+.1f dB", t.shimmerCutDb.load()) + fmt("   coherence %.2f", t.hfCoherence.load()),

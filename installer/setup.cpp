@@ -107,6 +107,37 @@ DWORD fileSizeKB(const std::wstring& p) {
     return static_cast<DWORD>(((static_cast<ULONGLONG>(d.nFileSizeHigh) << 32) | d.nFileSizeLow) / 1024);
 }
 
+// Builds before Oct 23 2026 18:00 installed this same app under older names
+// ("Hybrid Core" folder / uninstall key "HybridCore"). Remove that copy so
+// there is only one — but ONLY if its registry entry proves it is ours.
+void removeOldCopy() {
+    const wchar_t* oldKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\HybridCore";
+    HKEY k;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, oldKey, 0, KEY_READ, &k) != ERROR_SUCCESS) return;
+    wchar_t name[128] = {}, pub[128] = {}, loc[1024] = {};
+    DWORD a = sizeof name, b = sizeof pub, c = sizeof loc;
+    RegQueryValueExW(k, L"DisplayName", nullptr, nullptr, reinterpret_cast<BYTE*>(name), &a);
+    RegQueryValueExW(k, L"Publisher", nullptr, nullptr, reinterpret_cast<BYTE*>(pub), &b);
+    RegQueryValueExW(k, L"InstallLocation", nullptr, nullptr, reinterpret_cast<BYTE*>(loc), &c);
+    RegCloseKey(k);
+    if (lstrcmpW(name, L"THE HYBRID CORE 2.0") != 0 || lstrcmpW(pub, L"Hybrid Elite Mafia") != 0 || !loc[0]) return;
+    const std::wstring dir = loc;
+    DeleteFileW((dir + L"\\HybridCore.exe").c_str());
+    DeleteFileW((dir + L"\\Uninstall Hybrid Core.exe").c_str());
+    RemoveDirectoryW(dir.c_str());
+    DeleteFileW((knownFolder(FOLDERID_Programs) + L"\\Hybrid Core.lnk").c_str());
+    DeleteFileW((knownFolder(FOLDERID_Desktop) + L"\\Hybrid Core.lnk").c_str());
+    RegDeleteTreeW(HKEY_CURRENT_USER, L"Software\\Classes\\HybridCore.Session");
+    HKEY h;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Classes\\.hcs", 0, KEY_READ | KEY_SET_VALUE, &h) == ERROR_SUCCESS) {
+        wchar_t v[64] = {}; DWORD sz = sizeof v;
+        if (RegQueryValueExW(h, nullptr, nullptr, nullptr, reinterpret_cast<BYTE*>(v), &sz) == ERROR_SUCCESS && lstrcmpW(v, L"HybridCore.Session") == 0)
+            RegDeleteValueW(h, nullptr);
+        RegCloseKey(h);
+    }
+    RegDeleteTreeW(HKEY_CURRENT_USER, oldKey);
+}
+
 int install() {
     const std::wstring dir = installDir();
     const std::wstring ask = std::wstring(L"Install ") + kAppName + L"?\n\n"
@@ -117,6 +148,7 @@ int install() {
         L"No admin rights needed.";
     if (MessageBoxW(nullptr, ask.c_str(), kTitle, MB_YESNO | MB_ICONQUESTION) != IDYES) return 1;
 
+    removeOldCopy();
     SHCreateDirectoryExW(nullptr, dir.c_str(), nullptr);
     std::wstring err;
     if (!writeResource(IDR_PAYLOAD_APP, appExe(), err)) { MessageBoxW(nullptr, err.c_str(), kTitle, MB_ICONERROR); return 2; }
