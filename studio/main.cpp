@@ -241,7 +241,14 @@ private:
     bool dragMoved_ = false;
     std::string tooltip_;
     float tipX_ = 0, tipY_ = 0;
-    bool fullView_ = true;
+    // Sections of the 16:9 faceplate. Controls are written in ORIGINAL art
+    // coordinates; each section maps them onto the canvas with an offset.
+    enum class Sec { Canvas, Console, Panels };
+    Sec curSec_ = Sec::Canvas, tipSec_ = Sec::Console;
+    void setSection(Sec s);
+    void toggleFullscreen();
+    bool fullscreen_ = false;
+    WINDOWPLACEMENT savedPlacement_{};
     float viewScale_ = 1, viewOffX_ = 0, viewOffY_ = 0;
 
     std::unique_ptr<StemEngine> eng_;
@@ -314,10 +321,8 @@ bool App::init(HINSTANCE inst, int show) {
     RECT work{};
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &work, 0);
     const float ww = static_cast<float>(work.right - work.left), wh = static_cast<float>(work.bottom - work.top);
-    fullView_ = wh >= 1300.0f;   // tall screens show the crown + title; laptops show the console
-    const LY::Box v = fullView_ ? LY::view_full : LY::view_console;
-    const float s = std::min(ww * 0.96f / (v.x1 - v.x0), wh * 0.96f / (v.y1 - v.y0));
-    RECT rc{0, 0, static_cast<LONG>((v.x1 - v.x0) * s), static_cast<LONG>((v.y1 - v.y0) * s)};
+    const float s = std::min(ww * 0.96f / LY::kCanvasW, wh * 0.96f / LY::kCanvasH);
+    RECT rc{0, 0, static_cast<LONG>(LY::kCanvasW * s), static_cast<LONG>(LY::kCanvasH * s)};
     AdjustWindowRectEx(&rc, WS_OVERLAPPEDWINDOW, FALSE, 0);
     const int w = rc.right - rc.left, h = rc.bottom - rc.top;
     hwnd_ = CreateWindowExW(WS_EX_ACCEPTFILES, wc.lpszClassName, L"THE HYBRID CORE 2.0 — Hybrid Elite Mafia", WS_OVERLAPPEDWINDOW,
@@ -341,7 +346,7 @@ bool App::init(HINSTANCE inst, int show) {
 
     trHist_.assign(280, TransientViz{});
     rebuildEngine(48000.0);
-    ShowWindow(hwnd_, show);
+    ShowWindow(hwnd_, show == SW_SHOWMINIMIZED || show == SW_MINIMIZE ? show : SW_SHOWMAXIMIZED);   // 16:9 faceplate: open maximized
     UpdateWindow(hwnd_);
     toast("Drop up to 13 WAV stems on the window, or use the menu (≡) → Load Stems");
     return true;
@@ -800,7 +805,7 @@ void App::showMainMenu() {
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING | (loadedCount() ? 0 : MF_GRAYED), ID_EXPORT, exporting_ ? L"Cancel Export" : L"Export Master…\tCtrl+E");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(m, MF_STRING, ID_VIEW_TOGGLE, fullView_ ? L"Console View (hide title art)" : L"Full Faceplate View");
+    AppendMenuW(m, MF_STRING, ID_VIEW_TOGGLE, fullscreen_ ? L"Exit Full Screen\tF11" : L"Full Screen\tF11");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, ID_EXIT, L"Exit");
     POINT p; GetCursorPos(&p);
@@ -812,7 +817,7 @@ void App::showMainMenu() {
     case ID_OPEN_SESSION: openSession(); break;
     case ID_SAVE_SESSION: saveSessionAs(); break;
     case ID_EXPORT: exportMaster(); break;
-    case ID_VIEW_TOGGLE: fullView_ = !fullView_; break;
+    case ID_VIEW_TOGGLE: toggleFullscreen(); break;
     case ID_EXIT: PostMessageW(hwnd_, WM_CLOSE, 0, 0); break;
     default: break;
     }
@@ -916,28 +921,55 @@ float App::knob(int id, const LY::Knob& k, float value, float mn, float mx, Tape
     gfx_.circleGradient(k.cx, k.cy, bodyR - 7.0f, Color(0x555B62FF).alpha(alpha), Color(0xBFC4CAFF).alpha(alpha));
     const float px = std::cos(va), py = std::sin(va);
     gfx_.line(k.cx + px * bodyR * 0.25f, k.cy + py * bodyR * 0.25f, k.cx + px * (bodyR - 3.0f), k.cy + py * (bodyR - 3.0f), 3.5f, Color(0xFFFFFFFF).alpha(alpha));
-    if (hot || activeId_ == id) { tooltip_ = valueText; tipX_ = k.cx; tipY_ = k.cy - k.r - 6.0f; }
+    if (hot || activeId_ == id) { tooltip_ = valueText; tipX_ = k.cx; tipY_ = k.cy - k.r - 6.0f; tipSec_ = curSec_; }
     return out;
 }
 
 // ====================================================================================== frame
 void App::updateTransform() {
-    const LY::Box v = fullView_ ? LY::view_full : LY::view_console;
     const float W = static_cast<float>(gfx_.width()), H = static_cast<float>(gfx_.height());
-    const float s = std::min(W / (v.x1 - v.x0), H / (v.y1 - v.y0));
+    const float s = std::min(W / LY::kCanvasW, H / LY::kCanvasH);
     viewScale_ = s;
-    viewOffX_ = 0.5f * (W - (v.x1 - v.x0) * s) - v.x0 * s;
-    viewOffY_ = 0.5f * (H - (v.y1 - v.y0) * s) - v.y0 * s;
-    gfx_.setTransform(s, viewOffX_, viewOffY_);
-    gfx_.setSkinView({v.x0, v.y0, v.x1, v.y1});
+    viewOffX_ = 0.5f * (W - LY::kCanvasW * s);
+    viewOffY_ = 0.5f * (H - LY::kCanvasH * s);
+    gfx_.setSkinView({0, 0, LY::kCanvasW, LY::kCanvasH});
+    setSection(Sec::Canvas);
+}
+
+void App::setSection(Sec sec) {
+    curSec_ = sec;
+    float dx = 0, dy = 0;
+    if (sec == Sec::Console) { dx = LY::kConsoleDx; dy = LY::kConsoleDy; }
+    else if (sec == Sec::Panels) { dx = LY::kPanelsDx; dy = LY::kPanelsDy; }
+    const float ox = viewOffX_ + dx * viewScale_, oy = viewOffY_ + dy * viewScale_;
+    gfx_.setTransform(viewScale_, ox, oy);
+    in_.mx = (in_.devX - ox) / viewScale_;
+    in_.my = (in_.devY - oy) / viewScale_;
+}
+
+void App::toggleFullscreen() {
+    if (!fullscreen_) {
+        savedPlacement_.length = sizeof(WINDOWPLACEMENT);
+        GetWindowPlacement(hwnd_, &savedPlacement_);
+        MONITORINFO mi{};
+        mi.cbSize = sizeof mi;
+        GetMonitorInfoW(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), &mi);
+        SetWindowLongPtrW(hwnd_, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+        SetWindowPos(hwnd_, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right - mi.rcMonitor.left,
+                     mi.rcMonitor.bottom - mi.rcMonitor.top, SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
+        fullscreen_ = true;
+    } else {
+        SetWindowLongPtrW(hwnd_, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
+        SetWindowPlacement(hwnd_, &savedPlacement_);
+        SetWindowPos(hwnd_, nullptr, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER);
+        fullscreen_ = false;
+    }
 }
 
 void App::frame() {
-    updateTransform();
     POINT p; GetCursorPos(&p); ScreenToClient(hwnd_, &p);
     in_.devX = static_cast<float>(p.x); in_.devY = static_cast<float>(p.y);
-    in_.mx = (in_.devX - viewOffX_) / viewScale_;
-    in_.my = (in_.devY - viewOffY_) / viewScale_;
+    updateTransform();
     in_.down = (GetKeyState(VK_LBUTTON) & 0x8000) != 0;
     in_.shift = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
     in_.ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
@@ -963,8 +995,10 @@ void App::frame() {
     master_ = eng_->masterSnapshot().read_buffer();
 
     gfx_.beginFrame(0x040506FF);
+    setSection(Sec::Console);
     drawTransport();
     drawArrange();
+    setSection(Sec::Panels);
     drawDestroyer();
     drawResonance();
     drawTransient();
@@ -993,7 +1027,7 @@ void App::drawTransport() {
     if (button(6, R(LY::btnRecord))) exportMaster();
     if (button(7, R(LY::btnAnalyze))) { analyze_ = !analyze_; toast(analyze_ ? "Analyze: per-stem loudness shown on the lanes" : "Analyze off"); }
     if (button(8, R(LY::btnSettings))) showSettingsMenu();
-    if (button(9, R(LY::btnView))) fullView_ = !fullView_;
+    if (button(9, R(LY::btnView))) toggleFullscreen();
     if (button(10, R(LY::btnTopRight))) showAbout();
 
     if (playing) gfx_.roundRect(R(LY::btnPlay).inset(2), 6, Color(kCyan).alpha(0.22f));
@@ -1030,7 +1064,7 @@ void App::drawTransport() {
     if (tHot && in_.wheel != 0) bpm_ = std::clamp(bpm_ + in_.wheel * (in_.shift ? 0.1 : 1.0), 40.0, 240.0);
     gfx_.textIn({tb.x0, tb.y0 + 2, tb.x1, tb.y0 + 30}, fmt("%.2f", bpm_), Font::Large, kText);
     gfx_.textIn({tb.x0, tb.y0 + 28, tb.x1, tb.y1 - 2}, "4/4", Font::Small, kDim);
-    if (tHot || activeId_ == 20) { tooltip_ = "Tempo (estimate) · drag / wheel to set · double-click to re-detect"; tipX_ = tb.cx(); tipY_ = tb.y1 + 34; }
+    if (tHot || activeId_ == 20) { tooltip_ = "Tempo (estimate) · drag / wheel to set · double-click to re-detect"; tipX_ = tb.cx(); tipY_ = tb.y1 + 34; tipSec_ = curSec_; }
 
     // Master output level meter: two rows of segments, peak with 20 dB/s fall.
     const Rect lm = R(LY::levelMeter);
@@ -1051,7 +1085,7 @@ void App::drawTransport() {
 
 // ------------------------------------------------------------------ arrange
 void App::drawArrange() {
-    const Rect lanes = R(LY::lanes), ruler = R(LY::ruler);
+    const Rect lanes{LY::lanes.x0, LY::lanes.y0, LY::lanes.x1, LY::kRowsY1 - 4}, ruler = R(LY::ruler);
     const float lx0 = lanes.x0 + 4, lx1 = lanes.x1 - 4;
     const std::uint64_t len = songLength();
     const double secs = len ? static_cast<double>(len) / sr_ : 0.0;
@@ -1084,14 +1118,19 @@ void App::drawArrange() {
         if (in_.released) activeId_ = 0;
     }
 
-    // Rows.
+    // Rows (drawn entirely live: the painted rows were cut out of the art).
+    gfx_.rect({58, LY::kRowsY0, lanes.x0, LY::kRowsY1 - 4}, 0x090E13FF);
+    const float hh = 0.5f * LY::kRowH;
     bool anySolo = false;
     for (std::size_t i = 0; i < kNumStems; ++i) anySolo |= eng_->stem(i).solo.load();
     for (int i = 0; i < static_cast<int>(kNumStems); ++i) {
         Slot& s = slots_[static_cast<std::size_t>(i)];
         auto& st = eng_->stem(static_cast<std::size_t>(i));
         const float cy = LY::kRow0 + LY::kRowStep * static_cast<float>(i);
-        const Rect nameR{104, cy - 19, 238, cy + 19};
+        const Rect nameR{104, cy - hh, 238, cy + hh};
+        const Rect numR{62, cy - hh, 100, cy + hh};
+        gfx_.roundRect(numR, 3, 0x111820FF);
+        gfx_.textIn(numR, std::to_string(i + 1), Font::Normal, kDim);
         const bool isSel = i == selected_;
         gfx_.rect(nameR, isSel ? Color(0x0F2A36FF) : Color(0x101519FF));
         if (isSel) gfx_.rect({nameR.x0, nameR.y0, nameR.x0 + 3, nameR.y1}, kCyan);
@@ -1099,13 +1138,14 @@ void App::drawArrange() {
         const bool audible = !st.mute.load() && (!anySolo || st.solo.load());
         gfx_.circle(116, cy - 3, 9.0f, base.alpha(0.12f + 0.45f * s.dotLevel));
         gfx_.circle(116, cy - 3, 5.5f, s.loaded ? base : Color(0x33414BFF));
-        gfx_.textIn({128, cy - 17, 236, cy + 8}, s.loaded ? shownName(i) : std::string("empty"), Font::Normal, s.loaded ? kText : Color(0x46555FFF), Align::Left);
+        gfx_.textIn({128, cy - hh + 2, 236, cy + 6}, s.loaded ? shownName(i) : std::string("empty"), Font::Normal, s.loaded ? kText : Color(0x46555FFF), Align::Left);
         // volume bar (fader −60…+6 dB)
         const float fdb = st.faderDb.target();
         const float vf = clampf((fdb + 60.0f) / 66.0f, 0, 1);
-        gfx_.rect({128, cy + 11, 234, cy + 14}, 0x1C2830FF);
-        gfx_.rect({128, cy + 11, 128 + 106 * vf, cy + 14}, s.loaded ? base.alpha(0.8f) : Color(0x2A3640FF));
-        gfx_.rect({128 + 106 * (60.0f / 66.0f) - 0.75f, cy + 9, 128 + 106 * (60.0f / 66.0f) + 0.75f, cy + 16}, kDim);
+        const float vb = cy + hh - 10;
+        gfx_.rect({128, vb, 234, vb + 3}, 0x1C2830FF);
+        gfx_.rect({128, vb, 128 + 106 * vf, vb + 3}, s.loaded ? base.alpha(0.8f) : Color(0x2A3640FF));
+        gfx_.rect({128 + 106 * (60.0f / 66.0f) - 0.75f, vb - 2, 128 + 106 * (60.0f / 66.0f) + 0.75f, vb + 5}, kDim);
 
         const int nid = 100 + i;
         const bool hot = nameR.contains(in_.mx, in_.my);
@@ -1124,18 +1164,24 @@ void App::drawArrange() {
         if (hot && in_.wheel != 0) st.faderDb.set(clampf(fdb + in_.wheel * (in_.shift ? 0.1f : 1.0f), -60.0f, 6.0f));
         if (hot || activeId_ == nid) {
             tooltip_ = s.loaded ? (fdb <= -59.9f ? std::string("-inf dB") : fmt("%+.1f dB", fdb)) + "  ·  drag = volume" : "double-click to load a stem here";
-            tipX_ = 171; tipY_ = cy - 22;
+            tipX_ = 171; tipY_ = cy - hh - 3; tipSec_ = curSec_;
         }
 
         // M / S
-        const Rect mR{LY::rowM.x0, cy - 13, LY::rowM.x1, cy + 13}, sR{LY::rowS.x0, cy - 13, LY::rowS.x1, cy + 13};
+        const Rect mR{LY::rowM.x0, cy - 15, LY::rowM.x1, cy + 15}, sR{LY::rowS.x0, cy - 15, LY::rowS.x1, cy + 15};
         if (button(200 + i, mR)) st.mute.store(!st.mute.load());
         if (button(220 + i, sR)) st.solo.store(!st.solo.load());
+        for (const Rect* b : {&mR, &sR}) {
+            gfx_.roundRect(*b, 4, 0x3A4652FF);
+            gfx_.roundRect(b->inset(1.5f), 3, (hotId_ == 200 + i && b == &mR) || (hotId_ == 220 + i && b == &sR) ? Color(0x26313BFF) : Color(0x161D24FF));
+        }
+        gfx_.textIn(mR, "M", Font::Normal, kText);
+        gfx_.textIn(sR, "S", Font::Normal, kText);
         if (st.mute.load()) { gfx_.roundRect(mR.inset(1), 3, Color(kYellow).alpha(0.9f)); gfx_.textIn(mR, "M", Font::Normal, 0x101010FF); }
         if (st.solo.load()) { gfx_.roundRect(sR.inset(1), 3, Color(kGreen).alpha(0.9f)); gfx_.textIn(sR, "S", Font::Normal, 0x101010FF); }
 
         // Lane + waveform
-        const Rect lane{lx0, cy - 18, lx1, cy + 18};
+        const Rect lane{lx0, cy - hh, lx1, cy + hh};
         gfx_.rect(lane, i % 2 ? Color(0x0B1218FF) : Color(0x0D151CFF));
         if (isSel) gfx_.rectOutline(lane, Color(kCyan).alpha(0.25f), 1.5f);
         if (s.loaded && !s.peaks.empty() && len) {
@@ -1148,7 +1194,7 @@ void App::drawArrange() {
                 const std::size_t b1 = std::max(b0 + 1, s.peaks.size() * static_cast<std::size_t>(c + 1) / static_cast<std::size_t>(cols));
                 float m = 0;
                 for (std::size_t b = b0; b < b1 && b < s.peaks.size(); ++b) m = std::max(m, s.peaks[b]);
-                const float h = 16.0f * std::sqrt(clampf(m, 0, 1));
+                const float h = (hh - 3.0f) * std::sqrt(clampf(m, 0, 1));
                 const float x = lx0 + 1.5f * c;
                 gfx_.rect({x, cy - h, x + 1.2f, cy + h}, wc.alpha(0.85f));
             }
@@ -1380,7 +1426,7 @@ void App::drawTransient() {
     const bool speed = sp.target() > 0.5f;
     gfx_.roundRect(sw.inset(2), 5, 0x0B0E11FF);
     gfx_.roundRect({sw.x0 + 6, speed ? sw.cy() + 1 : sw.y0 + 5, sw.x1 - 6, speed ? sw.y1 - 5 : sw.cy() - 1}, 3, kCyan);
-    if (sw.contains(in_.mx, in_.my)) { tooltip_ = speed ? "SPEED: fast detector (tight, clicky hits)" : "PUNCH: slower detector (bigger, fuller hits)"; tipX_ = sw.cx(); tipY_ = sw.y0 - 30; }
+    if (sw.contains(in_.mx, in_.my)) { tooltip_ = speed ? "SPEED: fast detector (tight, clicky hits)" : "PUNCH: slower detector (bigger, fuller hits)"; tipX_ = sw.cx(); tipY_ = sw.y0 - 30; tipSec_ = curSec_; }
 
     auto& at = tr->param(TransientProcessor::kAttack);
     auto& su = tr->param(TransientProcessor::kSustain);
@@ -1464,13 +1510,13 @@ void App::drawMastering() {
     static const char* glue[] = {"CLEAN", "PUNCH", "LOUD"};
     if (button(610, R(LY::msModeBox))) { glueMode_ = static_cast<Glue>((static_cast<int>(glueMode_) + 1) % 3); applyGlue(); }
     gfx_.textIn(R(LY::msModeBox), glue[static_cast<int>(glueMode_)], Font::Small, kCyan);
-    if (R(LY::msModeBox).contains(in_.mx, in_.my)) { tooltip_ = "Bus glue before the limiter: CLEAN off · PUNCH 2:1 · LOUD 3:1 (click)"; tipX_ = LY::msModeBox.x0 + 40; tipY_ = LY::msModeBox.y0 - 30; }
+    if (R(LY::msModeBox).contains(in_.mx, in_.my)) { tooltip_ = "Bus glue before the limiter: CLEAN off · PUNCH 2:1 · LOUD 3:1 (click)"; tipX_ = LY::msModeBox.x0 + 40; tipY_ = LY::msModeBox.y0 - 30; tipSec_ = curSec_; }
     const Rect tbx = R(LY::msTargetBox);
     const bool tHot = tbx.contains(in_.mx, in_.my);
     if (tHot) {
         hotId_ = 611;
         tooltip_ = normalize_ ? "Export loudness target · drag / wheel to set" : "Export without normalizing (pick a preset above to enable)";
-        tipX_ = tbx.cx(); tipY_ = tbx.y0 - 30;
+        tipX_ = tbx.cx(); tipY_ = tbx.y0 - 30; tipSec_ = curSec_;
         if (in_.pressed && normalize_) { activeId_ = 611; dragStartY_ = in_.devY; dragStartVal_ = static_cast<float>(target_); }
         if (in_.wheel != 0 && normalize_) target_ = std::clamp(target_ + in_.wheel * 0.5, -30.0, -6.0);
     }
@@ -1505,6 +1551,7 @@ void App::drawMastering() {
 
 // ------------------------------------------------------------------ overlays
 void App::drawOverlays() {
+    setSection(Sec::Console);
     if (exporting_) {
         const Rect b{460, 1090, 1220, 1210};
         gfx_.roundRect(b, 12, 0x000000E0);
@@ -1518,12 +1565,13 @@ void App::drawOverlays() {
     }
     if (!toast_.empty() && now() < toastUntil_) {
         const float w = gfx_.textWidth(toast_, Font::Normal) + 40;
-        const Rect t{719 - w / 2, 1190, 719 + w / 2, 1232};
+        const Rect t{719 - w / 2, LY::kRowsY1 - 70, 719 + w / 2, LY::kRowsY1 - 28};
         gfx_.roundRect(t, 8, 0x000000D8);
         gfx_.rectOutline(t, Color(kCyan).alpha(0.35f), 1.5f);
         gfx_.textIn(t, toast_, Font::Normal, kText);
     }
     if (!tooltip_.empty()) {
+        setSection(tipSec_);
         const float w = gfx_.textWidth(tooltip_, Font::Small) + 20;
         float x0 = tipX_ - w / 2;
         x0 = clampf(x0, 10, 1428 - w);
@@ -1559,6 +1607,7 @@ LRESULT App::wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
         if (w == VK_SPACE) { if (eng_->isPlaying()) eng_->stop(); else if (loadedCount()) eng_->play(); }
         else if (w == VK_HOME) eng_->seek(0);
+        else if (w == VK_F11 || (w == VK_ESCAPE && fullscreen_)) toggleFullscreen();
         else if (ctrl && w == 'L') loadFiles(openFilesDialog(hwnd_, L"Load Stems (up to 13 WAV files)", {L"WAV audio (*.wav)", L"*.wav"}, true));
         else if (ctrl && w == 'O') openSession();
         else if (ctrl && w == 'S') saveSessionAs();

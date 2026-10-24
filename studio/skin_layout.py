@@ -32,6 +32,7 @@ RECTS = [
     ("timeDisplay", 420, 578, 756, 627), ("tempoDisplay", 768, 578, 874, 627), ("levelMeter", 893, 579, 1150, 627),
     # arrange
     ("ruler", 322, 655, 1362, 686), ("lanes", 322, 688, 1350, 1245), ("names", 104, 688, 238, 1245),
+    ("rowsAll", 56, 688, 1354, 1245),
     # header selectors (text boxes)
     ("dsHeaderBox", 509, 1324, 608, 1352), ("rsHeaderBox", 1162, 1324, 1314, 1352), ("msHeaderBox", 1164, 1750, 1310, 1774),
     # screens
@@ -64,10 +65,24 @@ HOTSPOTS = [
 HOTSPOTS = [(n, x0, y0 + 430, x1, y1 + 430) if n.startswith("btn") else (n, x0, y0, x1, y1)
             for (n, x0, y0, x1, y1) in HOTSPOTS]
 # track rows: centre y of row i = ROW0 + i * ROW_STEP
-ROW0, ROW_STEP, ROW_H = 707.0, 42.83, 40.0
+ROW0, ROW_STEP, ROW_H = 0.0, 0.0, 0.0   # computed from the 16:9 layout (see write_header)
 ROW_M = (243, 271)   # x range of the painted M box
 ROW_S = (276, 305)   # x range of the painted S box
-VIEWS = {"full": (0, 0, 1438, 2576), "console": (0, 455, 1438, 2215)}
+# ---- 16:9 composition (canvas px). Controls keep ORIGINAL-image coordinates;
+# the app draws each section with its own offset (scale is 1:1 for both).
+CANVAS_W, CANVAS_H = 2876, 1618
+TITLE_SRC = (0, 0, 1438, 430)        # crown + THE HYBRID CORE
+BASE_SRC = (0, 2165, 1438, 2576)     # hood, vent, tagline
+BAND_SCALE = 0.82
+BAND_A_H = 354                       # title band height
+CONSOLE_TOP = (452, 690)             # orig y: frame + transport + ruler
+CONSOLE_ROWS = (690, 1245)           # orig y: track rows (stretched)
+CONSOLE_BOT = (1245, 1272)           # orig y: bottom frame
+MID_H = 910                          # console and panel block height
+ROWS_Y1 = CONSOLE_ROWS[0] + (MID_H - (CONSOLE_TOP[1] - CONSOLE_TOP[0]) - (CONSOLE_BOT[1] - CONSOLE_BOT[0]))
+PANELS_SRC = (0, 1286, 1438, 1286 + MID_H)
+CONSOLE_DX, CONSOLE_DY = 0, BAND_A_H - CONSOLE_TOP[0]
+PANELS_DX, PANELS_DY = 1438, BAND_A_H - PANELS_SRC[1]
 
 
 def ring_median(im, cx, cy, r):
@@ -92,7 +107,7 @@ def border_median(im, x0, y0, x1, y1):
     return tuple(int(statistics.median(c[i] for c in vals)) for i in range(3))
 
 
-SCREEN_LIKE = {"dsScreen", "rsScreen", "trAttackScreen", "trSustainScreen", "msMeters", "lanes", "ruler",
+SCREEN_LIKE = {"rowsAll", "dsScreen", "rsScreen", "trAttackScreen", "trSustainScreen", "msMeters", "lanes", "ruler",
                "timeDisplay", "tempoDisplay", "levelMeter", "msIntegrated", "msShortTerm", "msPsr", "msPlr",
                "msModeBox", "msTargetBox", "dsHeaderBox", "rsHeaderBox", "msHeaderBox", "dsResBox"}
 
@@ -111,8 +126,49 @@ def build_skin():
         fd.rectangle([x0, y0, x1, y1], fill=col)
     mask = mask.filter(ImageFilter.GaussianBlur(1.5))
     out = Image.composite(fill, im, mask)
-    out.save(DST, quality=93, subsampling=0)
+    compose(out).save(DST, quality=92, subsampling=0)
     return out
+
+
+def feather_mask(w, h, edge):
+    m = Image.new("L", (w, h), 255)
+    d = ImageDraw.Draw(m)
+    for i in range(edge):
+        a = int(255 * (i + 1) / (edge + 1))
+        d.rectangle([i, 0, i, h], fill=a)
+        d.rectangle([w - 1 - i, 0, w - 1 - i, h], fill=a)
+    return m
+
+
+def band(src_img, box, height):
+    """Scaled art centred on a backdrop made from the same art (blurred, darkened)."""
+    piece = src_img.crop(box)
+    pw, ph = int(piece.width * BAND_SCALE), int(piece.height * BAND_SCALE)
+    piece = piece.resize((pw, ph), Image.LANCZOS)
+    back = src_img.crop(box).resize((CANVAS_W, height), Image.LANCZOS).filter(ImageFilter.GaussianBlur(18))
+    back = Image.eval(back, lambda v: int(v * 0.45))
+    x = (CANVAS_W - pw) // 2
+    y = (height - ph) // 2
+    back.paste(piece, (x, y), feather_mask(pw, ph, 60))
+    return back
+
+
+def compose(cut):
+    canvas = Image.new("RGB", (CANVAS_W, CANVAS_H), (6, 7, 9))
+    canvas.paste(band(cut, TITLE_SRC, BAND_A_H), (0, 0))
+    # console: top part 1:1, rows stretched, bottom frame 1:1
+    top = cut.crop((0, CONSOLE_TOP[0], 1438, CONSOLE_TOP[1]))
+    rows = cut.crop((0, CONSOLE_ROWS[0], 1438, CONSOLE_ROWS[1]))
+    bot = cut.crop((0, CONSOLE_BOT[0], 1438, CONSOLE_BOT[1]))
+    rows_h = MID_H - top.height - bot.height
+    rows = rows.resize((1438, rows_h), Image.BICUBIC)
+    canvas.paste(top, (0, BAND_A_H))
+    canvas.paste(rows, (0, BAND_A_H + top.height))
+    canvas.paste(bot, (0, BAND_A_H + top.height + rows_h))
+    canvas.paste(cut.crop(PANELS_SRC), (1438, BAND_A_H))
+    base_y = BAND_A_H + MID_H
+    canvas.paste(band(cut, BASE_SRC, CANVAS_H - base_y), (0, base_y))
+    return canvas
 
 
 def write_header():
@@ -125,10 +181,13 @@ def write_header():
         L.append(f"inline constexpr Knob {n}{{{cx}.0f, {cy}.0f, {r}.0f}};")
     for n, x0, y0, x1, y1 in RECTS + HOTSPOTS:
         L.append(f"inline constexpr Box {n}{{{x0}.0f, {y0}.0f, {x1}.0f, {y1}.0f}};")
-    L.append(f"inline constexpr float kRow0 = {ROW0}f, kRowStep = {ROW_STEP}f, kRowH = {ROW_H}f;")
+    step = (ROWS_Y1 - CONSOLE_ROWS[0] - 8) / 13.0
+    L.append(f"inline constexpr float kRowsY0 = {CONSOLE_ROWS[0]}.0f, kRowsY1 = {ROWS_Y1}.0f;")
+    L.append(f"inline constexpr float kRow0 = {CONSOLE_ROWS[0] + 4 + step / 2:.3f}f, kRowStep = {step:.3f}f, kRowH = {step - 4:.3f}f;")
+    L.append(f"inline constexpr float kCanvasW = {CANVAS_W}.0f, kCanvasH = {CANVAS_H}.0f;")
+    L.append(f"inline constexpr float kConsoleDx = {CONSOLE_DX}.0f, kConsoleDy = {CONSOLE_DY}.0f;")
+    L.append(f"inline constexpr float kPanelsDx = {PANELS_DX}.0f, kPanelsDy = {PANELS_DY}.0f;")
     L.append(f"inline constexpr Box rowM{{{ROW_M[0]}.0f, 0.0f, {ROW_M[1]}.0f, 0.0f}}, rowS{{{ROW_S[0]}.0f, 0.0f, {ROW_S[1]}.0f, 0.0f}};")
-    for n, (x0, y0, x1, y1) in VIEWS.items():
-        L.append(f"inline constexpr Box view_{n}{{{x0}.0f, {y0}.0f, {x1}.0f, {y1}.0f}};")
     L.append("} // namespace hc::studio::layout")
     open(HPP, "w").write("\n".join(L) + "\n")
 
