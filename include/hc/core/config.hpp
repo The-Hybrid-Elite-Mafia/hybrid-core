@@ -6,6 +6,13 @@
 #include <cstddef>
 #include <cstdint>
 
+// The Hybrid Core 2.0 is a C++23 code base. Fail loudly if a build quietly falls back to an older standard.
+#if defined(_MSVC_LANG)
+static_assert(_MSVC_LANG > 202002L, "THE HYBRID CORE 2.0 needs C++23 (MSVC: /std:c++latest)");
+#else
+static_assert(__cplusplus > 202002L, "THE HYBRID CORE 2.0 needs C++23 (-std=c++23)");
+#endif
+
 namespace hc {
 
 // The engine holds exactly 13 stems. This is a hard architectural constant:

@@ -30,6 +30,7 @@
 #include "resource.h"
 #include "hc/app/offline_render.hpp"
 #include "hc/app/unsaved_changes.hpp"
+#include "hc/dsp/resampler.hpp"
 #include "hc/engine/builtin_processors.hpp"
 #include "hc/engine/stem_engine.hpp"
 #include "hc/platform/thread_priority.hpp"
@@ -40,6 +41,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <fstream>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -57,7 +59,7 @@ namespace {
 constexpr Color kCyan = 0x3EC8FFFF, kCyanDim = 0x1B5E78FF, kOrange = 0xFF9A3EFF, kGreen = 0x5BE37AFF;
 constexpr Color kYellow = 0xE8C547FF, kRed = 0xFF4A4AFF, kText = 0xD8E6EEFF, kDim = 0x7F93A0FF;
 constexpr Color kScreen = 0x070B0FFF, kPanel = 0x12171CFF, kWhite = 0xF2F4F6FF;
-constexpr const char* kVersion = "2.0.0";
+constexpr const char* kVersion = "2.1.0";
 
 constexpr std::uint32_t kBlock = 1024;
 constexpr UINT WM_EXPORT_DONE = WM_APP + 1;
@@ -186,6 +188,7 @@ class App {
 public:
     bool init(HINSTANCE inst, int show);
     void openFromCommandLine();
+    int runScreenshots();
     int run();
     LRESULT wndProc(HWND h, UINT m, WPARAM w, LPARAM l);
 
@@ -254,6 +257,7 @@ private:
     std::string songTitle() const;
 
     HWND hwnd_ = nullptr;
+    std::wstring shotDir_;   // "--screenshot <folder>": save pictures of the real window, then quit
     Renderer gfx_;
     Input in_;
     int activeId_ = 0, hotId_ = 0;
@@ -394,6 +398,7 @@ bool App::init(HINSTANCE inst, int show) {
 
 int App::run() {
     MSG msg;
+    if (!shotDir_.empty()) return runScreenshots();
     for (;;) {
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) {
@@ -411,6 +416,62 @@ int App::run() {
     }
 }
 
+// "--screenshot <folder>": runs the real window (with the stems given on the command line playing),
+// saves a PNG of each page, then quits. Exit code 0 only if every picture was written.
+int App::runScreenshots() {
+    std::filesystem::create_directories(std::filesystem::path(shotDir_));
+    auto pump = [&] {
+        MSG m;
+        while (PeekMessageW(&m, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&m); DispatchMessageW(&m); }
+    };
+    auto runFor = [&](double seconds) {
+        const double t0 = now();
+        while (now() - t0 < seconds) { pump(); frame(); }
+    };
+    int failures = 0;
+    std::string log;   // the app has no console, so the result goes into result.txt next to the pictures
+    auto shot = [&](const wchar_t* file) {
+        runFor(0.3);
+        gfx_.captureNextFrame((std::filesystem::path(shotDir_) / file).wstring());
+        pump(); frame();
+        const std::string r = gfx_.captureResult();
+        log += "screenshot " + narrow(file) + ": " + (r.empty() ? std::string("saved") : r) + "\n";
+        if (!r.empty()) ++failures;
+    };
+    auto resizeTo = [&](int w, int h) {   // client-area size; the build machine's screen is small, the window may be bigger
+        ShowWindow(hwnd_, SW_SHOWNORMAL);
+        RECT rc{0, 0, w, h};
+        AdjustWindowRectEx(&rc, WS_OVERLAPPEDWINDOW, FALSE, 0);
+        SetWindowPos(hwnd_, nullptr, 0, 0, rc.right - rc.left, rc.bottom - rc.top, SWP_NOZORDER | SWP_NOACTIVATE);
+        runFor(0.3);
+    };
+    resizeTo(1920, 1080);
+    if (loadedCount() > 0) eng_->play();
+    runFor(4.0);   // let the meters and the spectrogram fill while the engine runs
+    page_ = Page::Console; zoom_ = -1; shot(L"console.png");
+    page_ = Page::Rack;    zoom_ = -1; shot(L"rack.png");
+    page_ = Page::Show;    zoom_ = -1; shot(L"show.png");
+    for (int i = 0; i < 4 && i < static_cast<int>(kNumStems); ++i) {
+        // each rack panel filled with one stem, so every plug-in can be looked at on its own
+        page_ = Page::Rack; zoom_ = i; selected_ = 5;
+        const wchar_t* names[4] = {L"panel-destroyer.png", L"panel-resonance.png", L"panel-transient.png", L"panel-mastering.png"};
+        shot(names[i]);
+    }
+    resizeTo(1389, 868);   // the laptop's real screen width
+    page_ = Page::Console; zoom_ = -1; shot(L"console-laptop-size.png");
+    exportCancel_ = true;
+    stopAudio();
+    if (eng_) eng_->shutdown();
+    log += fmt("screenshots done, %.0f failure(s)", static_cast<double>(failures)) + ", graphics adapter: " + gfx_.adapterName() + "\n";
+    log += "audio: " + deviceDesc_ + "\n";
+    log += fmt("stems loaded: %.0f", static_cast<double>(loadedCount())) + fmt(", session rate %.0f Hz\n", sr_);
+    {
+        std::ofstream f(std::filesystem::path(shotDir_) / L"result.txt");
+        f << log;
+    }
+    return failures ? 3 : 0;
+}
+
 // Files passed on the command line (or via "Open with"): WAV stems are
 // loaded into slots; a .hcs session is opened. "--play" starts playback.
 void App::openFromCommandLine() {
@@ -424,6 +485,7 @@ void App::openFromCommandLine() {
         std::wstring low = a;
         for (auto& c : low) c = static_cast<wchar_t>(towlower(c));
         if (low == L"--play") { play = true; continue; }
+        if (low == L"--screenshot" && i + 1 < argc) { shotDir_ = argv[++i]; continue; }
         if (low.size() > 4 && low.substr(low.size() - 4) == L".hcs") {
             Session sn;
             if (loadSession(a, sn, kNumStems).empty()) {
@@ -433,7 +495,11 @@ void App::openFromCommandLine() {
                     wav::Audio au;
                     if (!wav::read(std::filesystem::path(sn.paths[k]), au).empty()) continue;
                     if (rate == 0.0) rate = au.sampleRate;
-                    if (au.sampleRate != rate) continue;
+                    if (au.sampleRate != rate) {
+                        wav::Audio conv;
+                        if (!Resampler::convert(au, rate, conv).empty()) continue;
+                        au = std::move(conv);
+                    }
                     Slot& sl = slots_[k];
                     sl.loaded = true; sl.path = sn.paths[k]; sl.name = stemNameFromPath(sn.paths[k]);
                     sl.audio = std::move(au); sl.peaks = computePeaks(sl.audio, 2048);
@@ -656,7 +722,7 @@ void App::loadFiles(const std::vector<std::wstring>& files, int slot) {
     std::vector<int> targets;
     if (slot >= 0) targets.push_back(slot);
     else for (int i = 0; i < static_cast<int>(kNumStems) && targets.size() < files.size(); ++i) if (!slots_[static_cast<std::size_t>(i)].loaded) targets.push_back(i);
-    std::string errors;
+    std::string errors, converted;
     std::size_t skipped = files.size() > targets.size() ? files.size() - targets.size() : 0;
     double rate = loadedCount() > 0 ? sr_ : 0.0;
     struct Loaded { int slot; std::wstring path; wav::Audio a; };
@@ -668,9 +734,12 @@ void App::loadFiles(const std::vector<std::wstring>& files, int slot) {
         if (!e.empty()) { errors += e + "\n"; continue; }
         if (a.frames() == 0) { errors += stemNameFromPath(files[f]) + ": no audio\n"; continue; }
         if (rate == 0.0) rate = a.sampleRate;
-        if (a.sampleRate != rate) {
-            errors += stemNameFromPath(files[f]) + fmt(": %.0f Hz", a.sampleRate) + fmt(" (the session is %.0f Hz)\n", rate);
-            continue;
+        if (a.sampleRate != rate) {   // another sample rate: convert it to the session's rate
+            const double from = a.sampleRate;
+            wav::Audio conv;
+            if (const std::string ce = Resampler::convert(a, rate, conv); !ce.empty()) { errors += stemNameFromPath(files[f]) + ": " + ce + "\n"; continue; }
+            a = std::move(conv);
+            converted += stemNameFromPath(files[f]) + fmt(": %.0f", from) + fmt(" -> %.0f Hz\n", rate);
         }
         ok.push_back({targets[f], files[f], std::move(a)});
     }
@@ -703,6 +772,7 @@ void App::loadFiles(const std::vector<std::wstring>& files, int slot) {
     }
     SetCursor(LoadCursorW(nullptr, reinterpret_cast<LPCWSTR>(IDC_ARROW)));
     if (skipped) errors += fmt("%.0f file(s) skipped: all 13 stem slots are full.\n", static_cast<double>(skipped));
+    if (!converted.empty()) toast("Sample rate converted to match the session:  " + converted.substr(0, converted.find('\n')) + (converted.find('\n') + 1 < converted.size() ? "  (+ more)" : ""));
     if (!errors.empty()) MessageBoxW(hwnd_, widen("Some files weren't loaded:\n\n" + errors).c_str(), L"Hybrid Core", MB_ICONWARNING);
 }
 
@@ -840,7 +910,11 @@ void App::openSession() {
         wav::Audio a;
         if (auto e = wav::read(std::filesystem::path(s.paths[i]), a); !e.empty()) { missing += narrow(s.paths[i]) + "\n"; continue; }
         if (rate == 0.0) rate = a.sampleRate;
-        if (a.sampleRate != rate) { missing += narrow(s.paths[i]) + " (different sample rate)\n"; continue; }
+        if (a.sampleRate != rate) {
+            wav::Audio conv;
+            if (const std::string ce = Resampler::convert(a, rate, conv); !ce.empty()) { missing += narrow(s.paths[i]) + " (" + ce + ")\n"; continue; }
+            a = std::move(conv);
+        }
         sl.loaded = true; sl.path = s.paths[i]; sl.name = stemNameFromPath(s.paths[i]);
         sl.audio = std::move(a); sl.peaks = computePeaks(sl.audio, 2048);
     }

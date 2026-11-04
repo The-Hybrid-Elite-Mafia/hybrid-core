@@ -50,4 +50,4 @@ master lands on the target LUFS under the true-peak ceiling.
   Transient, Width), the 13-stem engine (sanitizers clean), the installer and uninstaller, and the app
   rendering and playing 13 stems under Wine.
 - Not built yet: ASIO (it needs Steinberg's SDK; the faceplate art mentions ASIO, but playback is WASAPI).
-- Stems must all have the same sample rate (there's no resampler yet).
+- Stems at different sample rates are converted when loaded (to the rate of the first stem). Tested: see the resampler section of the test run.

@@ -20,6 +20,7 @@
 //  un-limited mix, pass 2 measures what the limiter did, pass 3 renders with
 //  the corrected trim and verifies.
 // =============================================================================
+#include "hc/dsp/resampler.hpp"
 #include "hc/engine/builtin_processors.hpp"
 #include "hc/engine/stem_engine.hpp"
 #include "hc/io/wav.hpp"
@@ -161,10 +162,12 @@ int main(int argc, char** argv) {
     for (std::size_t s = 0; s < o.stems.size(); ++s) {
         if (auto e = wav::read(o.stems[s], stems[s]); !e.empty()) { std::fprintf(stderr, "error: %s\n", e.c_str()); return 1; }
         if (sr == 0) sr = stems[s].sampleRate;
-        if (stems[s].sampleRate != sr) {
-            std::fprintf(stderr, "error: %s is %.0f Hz but stem 1 is %.0f Hz — all stems must share one rate "
-                                 "(sample-rate conversion is not built into this version)\n", o.stems[s].c_str(), stems[s].sampleRate, sr);
-            return 1;
+        if (stems[s].sampleRate != sr) {   // another rate: convert it to the rate of stem 1
+            const double from = stems[s].sampleRate;
+            wav::Audio conv;
+            if (auto e = Resampler::convert(stems[s], sr, conv); !e.empty()) { std::fprintf(stderr, "error: %s: %s\n", o.stems[s].c_str(), e.c_str()); return 1; }
+            stems[s] = std::move(conv);
+            std::printf("converted %s from %.0f Hz to %.0f Hz\n", o.stems[s].c_str(), from, sr);
         }
         len = std::max<std::uint64_t>(len, stems[s].frames());
     }

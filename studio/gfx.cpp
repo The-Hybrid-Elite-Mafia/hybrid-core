@@ -315,6 +315,44 @@ void Renderer::beginFrame(Color c) {
     verts_.push_back({x0, y0, u0, v0, w}); verts_.push_back({x1, y1, u1, v1, w}); verts_.push_back({x0, y1, u0, v1, w});
 }
 
+// Copies a finished frame to the CPU and writes it as a PNG (Windows Imaging Component). "" = saved.
+std::string Renderer::savePng(ID3D11Texture2D* tex, const std::wstring& path) {
+    D3D11_TEXTURE2D_DESC d{};
+    tex->GetDesc(&d);
+    D3D11_TEXTURE2D_DESC sd = d;
+    sd.Usage = D3D11_USAGE_STAGING; sd.BindFlags = 0; sd.MiscFlags = 0;
+    sd.CPUAccessFlags = D3D11_CPU_ACCESS_READ; sd.SampleDesc = {1, 0}; sd.ArraySize = 1; sd.MipLevels = 1;
+    ID3D11Texture2D* stage = nullptr;
+    if (FAILED(dev_->CreateTexture2D(&sd, nullptr, &stage)) || !stage) return "screenshot: cannot create the staging texture";
+    ctx_->CopyResource(stage, tex);
+    D3D11_MAPPED_SUBRESOURCE m{};
+    if (FAILED(ctx_->Map(stage, 0, D3D11_MAP_READ, 0, &m))) { stage->Release(); return "screenshot: cannot read the frame"; }
+    std::string err;
+    IWICImagingFactory* fac = nullptr;
+    IWICStream* stream = nullptr;
+    IWICBitmapEncoder* enc = nullptr;
+    IWICBitmapFrameEncode* frame = nullptr;
+    IPropertyBag2* props = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&fac)))) err = "screenshot: no image encoder";
+    else if (FAILED(fac->CreateStream(&stream)) || FAILED(stream->InitializeFromFilename(path.c_str(), GENERIC_WRITE))) err = "screenshot: cannot create the file";
+    else if (FAILED(fac->CreateEncoder(GUID_ContainerFormatPng, nullptr, &enc)) || FAILED(enc->Initialize(stream, WICBitmapEncoderNoCache))) err = "screenshot: cannot start the PNG encoder";
+    else if (FAILED(enc->CreateNewFrame(&frame, &props)) || FAILED(frame->Initialize(props)) || FAILED(frame->SetSize(d.Width, d.Height))) err = "screenshot: cannot start the PNG frame";
+    else {
+        WICPixelFormatGUID pf = GUID_WICPixelFormat32bppBGR;   // alpha ignored
+        if (FAILED(frame->SetPixelFormat(&pf))) err = "screenshot: pixel format";
+        else if (FAILED(frame->WritePixels(d.Height, m.RowPitch, m.RowPitch * d.Height, static_cast<BYTE*>(m.pData)))) err = "screenshot: cannot write pixels";
+        else if (FAILED(frame->Commit()) || FAILED(enc->Commit())) err = "screenshot: cannot finish the PNG";
+    }
+    if (props) props->Release();
+    if (frame) frame->Release();
+    if (enc) enc->Release();
+    if (stream) stream->Release();
+    if (fac) fac->Release();
+    ctx_->Unmap(stage, 0);
+    stage->Release();
+    return err;
+}
+
 void Renderer::endFrame() {
     if (!msaaRtv_) return;
     const std::size_t bytes = verts_.size() * sizeof(Vertex);
@@ -364,6 +402,7 @@ void Renderer::endFrame() {
     if (SUCCEEDED(swap_->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&back))) && back) {
         if (msaa_ > 1) ctx_->ResolveSubresource(back, 0, msaaTex_, 0, DXGI_FORMAT_B8G8R8A8_UNORM);
         else ctx_->CopyResource(back, msaaTex_);
+        if (!capturePath_.empty()) { captureResult_ = savePng(back, capturePath_); capturePath_.clear(); }
         back->Release();
     }
     swap_->Present(1, 0);

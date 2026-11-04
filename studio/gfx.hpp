@@ -20,6 +20,7 @@
 #include <windows.h>
 #include <d3d11.h>
 #include <dxgi1_2.h>
+#include <wincodec.h>
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -78,6 +79,11 @@ public:
     void beginFrame(Color clear);
     void endFrame();
 
+    // Saves the NEXT finished frame as a PNG (used by "--screenshot"). The result ("" = saved) is
+    // available after that frame's endFrame().
+    void captureNextFrame(const std::wstring& pngPath) { capturePath_ = pngPath; captureResult_ = "not captured yet"; }
+    const std::string& captureResult() const { return captureResult_; }
+
     // ---- primitives (IMAGE coordinates) ----
     void rect(const Rect& r, Color c);
     void rectOutline(const Rect& r, Color c, float t = 1.5f);
@@ -110,11 +116,14 @@ private:
     void tri(float x0, float y0, float x1, float y1, float x2, float y2, std::uint32_t c);
     void triC(float x0, float y0, std::uint32_t c0, float x1, float y1, std::uint32_t c1, float x2, float y2, std::uint32_t c2);
     void quad(float x0, float y0, float x1, float y1, float x2, float y2, float x3, float y3, std::uint32_t c);
+    std::string savePng(ID3D11Texture2D* tex, const std::wstring& path);
     std::string buildAtlas();
     std::string createTargets();
     void releaseTargets();
 
     HWND hwnd_ = nullptr;
+    std::wstring capturePath_;
+    std::string captureResult_;
     std::string adapter_;
     ID3D11Device* dev_ = nullptr;
     ID3D11DeviceContext* ctx_ = nullptr;

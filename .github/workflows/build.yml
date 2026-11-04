@@ -1,0 +1,146 @@
+name: build-and-test
+
+# Windows only. Builds with MSVC (C++23), runs every test, runs the real app on the build machine and
+# takes pictures of it, builds the installer, installs it, starts the installed app, uninstalls it.
+# Results are written to the branch  ci-results-<branch>  so they can be read without opening GitHub.
+
+on:
+  push:
+    branches: [main, upgrade-cpp23]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (MSVC, C++23)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force ci-out | Out-Null
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 2>&1 | Tee-Object -FilePath ci-out\configure.txt
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --parallel 2>&1 | Tee-Object -FilePath ci-out\build_log.txt
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $w = (Select-String -Path ci-out\build_log.txt -Pattern 'warning C' | Measure-Object).Count
+          "compiler warnings: $w" | Tee-Object -FilePath ci-out\build_summary.txt
+          Select-String -Path ci-out\configure.txt -Pattern 'CXX compiler identification' | ForEach-Object { $_.Line } | Tee-Object -FilePath ci-out\build_summary.txt -Append
+          (Get-CimInstance Win32_Processor | Select-Object -First 1).Name | ForEach-Object { "build machine CPU: $_" } | Tee-Object -FilePath ci-out\build_summary.txt -Append
+
+      - name: Engine tests
+        shell: pwsh
+        run: |
+          & build\Release\hc_tests.exe 2>&1 | Tee-Object -FilePath ci-out\test_results.txt
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Demo stems and offline render
+        shell: pwsh
+        run: |
+          & build\Release\hc_demo_stems.exe stems 24 | Out-Null
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $files = Get-ChildItem stems\*.wav | Sort-Object Name | ForEach-Object { $_.FullName }
+          & build\Release\hc_render.exe --target -14 ci-out\demo_master.wav @files 2>&1 | Tee-Object -FilePath ci-out\render_report.txt
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Run the real app and take pictures
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force shots | Out-Null
+          $files = Get-ChildItem stems\*.wav | Sort-Object Name | ForEach-Object { '"' + $_.FullName + '"' }
+          $argv = @('--screenshot', ('"' + (Resolve-Path shots).Path + '"'), '--play') + $files
+          $p = Start-Process -FilePath build\Release\HybridCore.exe -ArgumentList $argv -Wait -PassThru
+          "app exit code: $($p.ExitCode)" | Tee-Object -FilePath ci-out\app_run.txt
+          if (Test-Path shots\result.txt) { Get-Content shots\result.txt | Tee-Object -FilePath ci-out\app_run.txt -Append }
+          if ($p.ExitCode -ne 0) { exit 1 }
+
+      - name: Build installer
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath`) do call "%%i\VC\Auxiliary\Build\vcvars64.bat"
+          mkdir build-win
+          mkdir dist-ci
+          copy build\Release\HybridCore.exe build-win\HybridCore.exe
+          rc /nologo /I installer /fo build-win\setup.res installer\setup.rc
+          if errorlevel 1 exit /b 1
+          cl /nologo /std:c++latest /EHsc /O2 /MT /DUNICODE /D_UNICODE /DNOMINMAX /Iinstaller installer\setup.cpp build-win\setup.res /Fe:dist-ci\HybridCore-Setup.exe /link /SUBSYSTEM:WINDOWS ole32.lib uuid.lib shell32.lib advapi32.lib user32.lib gdi32.lib
+          if errorlevel 1 exit /b 1
+
+      - name: Installer test (install, start the installed app, uninstall)
+        shell: pwsh
+        run: |
+          $out = 'ci-out\install_test.txt'
+          $ok = $true
+          function Rec($name, $good) { "$(if ($good) {'PASS'} else {'FAIL'})  $name" | Tee-Object -FilePath $out -Append; if (-not $good) { $script:ok = $false } }
+          $dir = Join-Path $env:LOCALAPPDATA 'Programs\HEM Hybrid Core 2'
+          $p = Start-Process -FilePath dist-ci\HybridCore-Setup.exe -ArgumentList '/silent' -Wait -PassThru
+          Rec "installer exit code is 0 (was $($p.ExitCode))" ($p.ExitCode -eq 0)
+          Rec 'HybridCore.exe is in the install folder' (Test-Path (Join-Path $dir 'HybridCore.exe'))
+          Rec 'uninstaller is in the install folder' (Test-Path (Join-Path $dir 'Uninstall HYBRID CORE 2.0.exe'))
+          Rec 'desktop shortcut exists' (Test-Path (Join-Path ([Environment]::GetFolderPath('Desktop')) 'THE HYBRID CORE 2.0.lnk'))
+          Rec 'Settings > Apps entry exists' (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HEM.HybridCore2')
+          New-Item -ItemType Directory -Force installed-shots | Out-Null
+          $files = Get-ChildItem stems\*.wav | Sort-Object Name | ForEach-Object { '"' + $_.FullName + '"' }
+          $argv = @('--screenshot', ('"' + (Resolve-Path installed-shots).Path + '"'), '--play') + $files
+          $a = Start-Process -FilePath (Join-Path $dir 'HybridCore.exe') -ArgumentList $argv -Wait -PassThru
+          Rec "installed app starts, draws and saves its pictures (exit code $($a.ExitCode))" ($a.ExitCode -eq 0)
+          $u = Start-Process -FilePath (Join-Path $dir 'Uninstall HYBRID CORE 2.0.exe') -ArgumentList '/uninstall /silent' -Wait -PassThru
+          Rec "uninstaller exit code is 0 (was $($u.ExitCode))" ($u.ExitCode -eq 0)
+          $gone = $false
+          for ($i = 0; $i -lt 40 -and -not $gone; $i++) { Start-Sleep -Seconds 1; $gone = -not (Test-Path (Join-Path $dir 'HybridCore.exe')) }
+          Rec 'HybridCore.exe removed by uninstall' $gone
+          Rec 'Settings > Apps entry removed' (-not (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HEM.HybridCore2'))
+          Rec 'desktop shortcut removed' (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('Desktop')) 'THE HYBRID CORE 2.0.lnk')))
+          if (-not $ok) { exit 1 }
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hybrid-core-windows
+          path: |
+            dist-ci/HybridCore-Setup.exe
+            ci-out/
+            shots/
+            installed-shots/
+
+      - name: Publish results to branch ci-results-${{ github.ref_name }}
+        if: always()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          $dest = "ci-results-$env:GITHUB_REF_NAME"
+          $tmp = Join-Path $env:RUNNER_TEMP 'results'
+          New-Item -ItemType Directory -Force $tmp | Out-Null
+          foreach ($d in 'ci-out','shots','installed-shots') { if (Test-Path $d) { Copy-Item $d (Join-Path $tmp $d) -Recurse -Force } }
+          if (Test-Path dist-ci\HybridCore-Setup.exe) { (Get-Item dist-ci\HybridCore-Setup.exe).Length | ForEach-Object { "installer size: $_ bytes" } | Out-File (Join-Path $tmp 'installer_size.txt') }
+          "commit: $env:GITHUB_SHA`nrun: $env:GITHUB_RUN_ID`njob status: $env:JOB_STATUS" | Out-File (Join-Path $tmp 'README.txt')
+          Push-Location $tmp
+          git init -q -b results
+          git config user.name 'hybrid-core-ci'
+          git config user.email 'ci@users.noreply.github.com'
+          git add -A
+          git commit -q -m "CI results for $env:GITHUB_SHA"
+          git push -q --force "https://x-access-token:$env:GH_TOKEN@github.com/$env:GITHUB_REPOSITORY.git" "results:refs/heads/$dest"
+          Pop-Location
+
+      - name: Publish installer as a release (main only)
+        if: github.ref == 'refs/heads/main' && success()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'v2.1.0'
+          Copy-Item dist-ci\HybridCore-Setup.exe 'HybridCore-2.1.0-Setup.exe'
+          $notes = "THE HYBRID CORE 2.1.0 (C++23, MSVC). Test results, pictures and the install test for this build: branch ci-results-main, commit $env:GITHUB_SHA."
+          gh release delete $tag --yes --cleanup-tag 2>$null
+          gh release create $tag 'HybridCore-2.1.0-Setup.exe' --title "THE HYBRID CORE $tag" --notes $notes --target $env:GITHUB_SHA

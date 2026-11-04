@@ -7,9 +7,11 @@
 cmake_minimum_required(VERSION 3.20)
 project(HybridCore LANGUAGES CXX VERSION 2.0.0)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+# MSVC: link the C++ runtime into the program so it never needs a separate "Visual C++ Redistributable" install.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release)
 endif()
@@ -28,6 +30,9 @@ endif()
 
 add_executable(hc_tests tests/test_main.cpp)
 target_link_libraries(hc_tests PRIVATE hybrid_core)
+
+add_executable(hc_demo_stems apps/hc_demo_stems.cpp)
+target_link_libraries(hc_demo_stems PRIVATE hybrid_core)
 
 add_executable(hc_render apps/hc_render.cpp)
 target_link_libraries(hc_render PRIVATE hybrid_core)

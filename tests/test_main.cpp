@@ -44,6 +44,8 @@ static void check(bool ok, const char* name, double value, const char* unit = ""
     if (!ok) ++g_fail;
 }
 static constexpr double kPi = std::numbers::pi;
+#include "test_wiring.hpp"
+#include "test_resample.hpp"
 
 // ----------------------------------------------------------------------------
 static void testComplexFFT() {
@@ -576,6 +578,8 @@ int main() {
     testEngine();
     testLoop();
     testLimiterGrMeter(); testUiMeters(); testUnsavedChanges();
+    testEveryControlIsWired();
+    testResampler();
     benchEngine();
     std::printf("\n%s (%d failure%s)\n", g_fail ? "FAILED" : "ALL PASSED", g_fail, g_fail == 1 ? "" : "s");
     return g_fail ? 1 : 0;

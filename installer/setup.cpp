@@ -23,6 +23,9 @@
 
 namespace {
 
+bool g_silent = false;   // "/silent": no questions, no message boxes, doesn't start the app (used by the automatic install test)
+int say(const wchar_t* text, const wchar_t* title, UINT flags) { return g_silent ? IDYES : MessageBoxW(nullptr, text, title, flags); }
+
 const wchar_t* kTitle = L"THE HYBRID CORE 2.0 Setup";
 const wchar_t* kAppName = L"THE HYBRID CORE 2.0";
 const wchar_t* kUninstKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\HEM.HybridCore2";
@@ -146,12 +149,12 @@ int install() {
         L"• Session files (.hcs) open in Hybrid Core\n"
         L"• Uninstall from Settings → Apps\n\n"
         L"No admin rights needed.";
-    if (MessageBoxW(nullptr, ask.c_str(), kTitle, MB_YESNO | MB_ICONQUESTION) != IDYES) return 1;
+    if (say(ask.c_str(), kTitle, MB_YESNO | MB_ICONQUESTION) != IDYES) return 1;
 
     removeOldCopy();
     SHCreateDirectoryExW(nullptr, dir.c_str(), nullptr);
     std::wstring err;
-    if (!writeResource(IDR_PAYLOAD_APP, appExe(), err)) { MessageBoxW(nullptr, err.c_str(), kTitle, MB_ICONERROR); return 2; }
+    if (!writeResource(IDR_PAYLOAD_APP, appExe(), err)) { say(err.c_str(), kTitle, MB_ICONERROR); return 2; }
 
     wchar_t self[MAX_PATH * 4];
     GetModuleFileNameW(nullptr, self, static_cast<DWORD>(std::size(self)));
@@ -181,7 +184,7 @@ int install() {
     HKEY k;
     if (RegCreateKeyExW(HKEY_CURRENT_USER, kUninstKey, 0, nullptr, 0, KEY_WRITE, nullptr, &k, nullptr) == ERROR_SUCCESS) {
         setStr(k, L"DisplayName", kAppName);
-        setStr(k, L"DisplayVersion", L"2.0.0");
+        setStr(k, L"DisplayVersion", L"2.1.0");
         setStr(k, L"Publisher", L"Hybrid Elite Mafia");
         setStr(k, L"DisplayIcon", appExe());
         setStr(k, L"InstallLocation", dir);
@@ -196,16 +199,16 @@ int install() {
     std::wstring done = std::wstring(kAppName) + L" is installed.\n\n";
     if (!s1 || !s2) done += L"(A shortcut couldn't be created — the program is in " + dir + L")\n\n";
     done += L"Open it now?";
-    if (MessageBoxW(nullptr, done.c_str(), kTitle, MB_YESNO | MB_ICONINFORMATION) == IDYES)
+    if (!g_silent && say(done.c_str(), kTitle, MB_YESNO | MB_ICONINFORMATION) == IDYES)
         ShellExecuteW(nullptr, L"open", appExe().c_str(), nullptr, dir.c_str(), SW_SHOWNORMAL);
     return 0;
 }
 
 int uninstall() {
-    if (MessageBoxW(nullptr, L"Remove THE HYBRID CORE 2.0 from this PC?\n(Other HEM programs are not affected.)\n\nYour stems, sessions and exported masters are NOT touched.",
+    if (say(L"Remove THE HYBRID CORE 2.0 from this PC?\n(Other HEM programs are not affected.)\n\nYour stems, sessions and exported masters are NOT touched.",
                     L"Uninstall Hybrid Core", MB_YESNO | MB_ICONQUESTION) != IDYES) return 1;
     if (!DeleteFileW(appExe().c_str()) && GetFileAttributesW(appExe().c_str()) != INVALID_FILE_ATTRIBUTES) {
-        MessageBoxW(nullptr, L"Hybrid Core is running. Close it, then uninstall again.", L"Uninstall Hybrid Core", MB_ICONERROR);
+        say(L"Hybrid Core is running. Close it, then uninstall again.", L"Uninstall Hybrid Core", MB_ICONERROR);
         return 2;
     }
     DeleteFileW(startLnk().c_str());
@@ -231,7 +234,7 @@ int uninstall() {
     }
     RegDeleteTreeW(HKEY_CURRENT_USER, kUninstKey);
     SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
-    MessageBoxW(nullptr, L"THE HYBRID CORE 2.0 was removed.", L"Uninstall Hybrid Core", MB_ICONINFORMATION);
+    say(L"THE HYBRID CORE 2.0 was removed.", L"Uninstall Hybrid Core", MB_ICONINFORMATION);
     // This uninstaller runs from the install folder, so a hidden cmd removes
     // it (and the then-empty folder) after we exit, retrying for up to ~30 s.
     const std::wstring u = uninstExe(), d = installDir();
@@ -250,6 +253,7 @@ int uninstall() {
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR cmdLine, int) {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     const std::wstring args = cmdLine ? cmdLine : L"";
+    g_silent = args.find(L"/silent") != std::wstring::npos;
     const int rc = (args.find(L"/uninstall") != std::wstring::npos) ? uninstall() : install();
     CoUninitialize();
     return rc;

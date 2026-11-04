@@ -4,8 +4,8 @@ IDI_SETUP ICON "../studio/assets/hybridcore.ico"
 IDR_PAYLOAD_APP RCDATA "../build-win/HybridCore.exe"
 1 24 "setup.manifest"
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION 2,0,0,0
-PRODUCTVERSION 2,0,0,0
+FILEVERSION 2,1,0,0
+PRODUCTVERSION 2,1,0,0
 FILEOS VOS_NT_WINDOWS32
 FILETYPE VFT_APP
 BEGIN
@@ -15,9 +15,9 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "Hybrid Elite Mafia"
       VALUE "FileDescription", "THE HYBRID CORE 2.0 Setup"
-      VALUE "FileVersion", "2.0.0"
+      VALUE "FileVersion", "2.1.0"
       VALUE "ProductName", "THE HYBRID CORE"
-      VALUE "ProductVersion", "2.0.0"
+      VALUE "ProductVersion", "2.1.0"
       VALUE "OriginalFilename", "HybridCore-Setup.exe"
     END
   END
