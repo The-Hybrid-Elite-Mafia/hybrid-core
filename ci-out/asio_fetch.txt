@@ -1,0 +1,5 @@
+Downloading https://download.steinberg.net/sdk_downloads/ASIO-SDK_2.3.4_2025-10-15.zip
+Checksum OK.
+Patched host\pc\asiolist.cpp (delete -> delete[]).
+ASIO SDK installed to D:\a\hybrid-core\hybrid-core\external\asiosdk\sdk
+Re-run cmake with -DHC_WITH_ASIO=ON to build the ASIO version.

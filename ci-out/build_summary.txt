@@ -1,0 +1,3 @@
+compiler warnings: 2
+-- The CXX compiler identification is MSVC 19.44.35229.0
+build machine CPU: INTEL(R) XEON(R) PLATINUM 8573C

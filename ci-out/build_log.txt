@@ -1,0 +1,30 @@
+MSBuild version 17.14.60+43b635718 for .NET Framework
+
+  1>Checking Build System
+  Building Custom Rule D:/a/hybrid-core/hybrid-core/CMakeLists.txt
+  main.cpp
+  Building Custom Rule D:/a/hybrid-core/hybrid-core/CMakeLists.txt
+  Building Custom Rule D:/a/hybrid-core/hybrid-core/CMakeLists.txt
+  Building Custom Rule D:/a/hybrid-core/hybrid-core/CMakeLists.txt
+  Building Custom Rule D:/a/hybrid-core/hybrid-core/CMakeLists.txt
+  test_main.cpp
+  hc_demo_stems.cpp
+  hc_render.cpp
+  hc_play.cpp
+  gfx.cpp
+  wasapi_output.cpp
+  wasapi_output.cpp
+  asio_output.cpp
+  hc_tests.vcxproj -> D:\a\hybrid-core\hybrid-core\build\Release\hc_tests.exe
+  hc_render.vcxproj -> D:\a\hybrid-core\hybrid-core\build\Release\hc_render.exe
+  hc_play.vcxproj -> D:\a\hybrid-core\hybrid-core\build\Release\hc_play.exe
+  hc_demo_stems.vcxproj -> D:\a\hybrid-core\hybrid-core\build\Release\hc_demo_stems.exe
+  Generating Code...
+  asio.cpp
+  asiodrivers.cpp
+  asiolist.cpp
+  Generating Code...
+D:\a\hybrid-core\hybrid-core\external\asiosdk\sdk\host\pc\asiolist.cpp(70,31): warning C4267: 'argument': conversion from 'size_t' to 'DWORD', possible loss of data [D:\a\hybrid-core\hybrid-core\build\HybridCore.vcxproj]
+D:\a\hybrid-core\hybrid-core\external\asiosdk\sdk\host\pc\asiolist.cpp(77,33): warning C4267: 'argument': conversion from 'size_t' to 'DWORD', possible loss of data [D:\a\hybrid-core\hybrid-core\build\HybridCore.vcxproj]
+  HybridCore.vcxproj -> D:\a\hybrid-core\hybrid-core\build\Release\HybridCore.exe
+  Building Custom Rule D:/a/hybrid-core/hybrid-core/CMakeLists.txt

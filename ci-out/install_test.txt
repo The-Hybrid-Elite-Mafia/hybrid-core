@@ -1,0 +1,11 @@
+PASS  installer exit code is 0 (was 0)
+PASS  HybridCore.exe is in the install folder
+PASS  uninstaller is in the install folder
+PASS  licence texts installed (GPLv3, notices, ASIO SDK licence)
+PASS  desktop shortcut exists
+PASS  Settings > Apps entry exists
+PASS  installed app starts, draws and saves its pictures (exit code 0)
+PASS  uninstaller exit code is 0 (was 0)
+PASS  HybridCore.exe removed by uninstall
+PASS  Settings > Apps entry removed
+PASS  desktop shortcut removed
