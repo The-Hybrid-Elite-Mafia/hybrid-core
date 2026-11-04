@@ -68,6 +68,15 @@ jobs:
           if (Test-Path shots\result.txt) { Get-Content shots\result.txt | Tee-Object -FilePath ci-out\app_run.txt -Append }
           if ($p.ExitCode -ne 0) { exit 1 }
 
+      - name: Run the real app with NOTHING loaded (fresh start) and take pictures
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force empty-shots | Out-Null
+          $p = Start-Process -FilePath build\Release\HybridCore.exe -ArgumentList @('--screenshot', ('"' + (Resolve-Path empty-shots).Path + '"')) -Wait -PassThru
+          "fresh-start app exit code: $($p.ExitCode)" | Tee-Object -FilePath ci-out\app_run_empty.txt
+          if (Test-Path empty-shots\result.txt) { Get-Content empty-shots\result.txt | Tee-Object -FilePath ci-out\app_run_empty.txt -Append }
+          if ($p.ExitCode -ne 0) { exit 1 }
+
       - name: Build installer
         shell: cmd
         run: |
@@ -120,6 +129,7 @@ jobs:
             dist-ci/HybridCore-Setup.exe
             ci-out/
             shots/
+            empty-shots/
             installed-shots/
 
       - name: Publish results to branch ci-results-${{ github.ref_name }}
@@ -132,7 +142,7 @@ jobs:
           $dest = "ci-results-$env:GITHUB_REF_NAME"
           $tmp = Join-Path $env:RUNNER_TEMP 'results'
           New-Item -ItemType Directory -Force $tmp | Out-Null
-          foreach ($d in 'ci-out','shots','installed-shots') { if (Test-Path $d) { Copy-Item $d (Join-Path $tmp $d) -Recurse -Force } }
+          foreach ($d in 'ci-out','shots','empty-shots','installed-shots') { if (Test-Path $d) { Copy-Item $d (Join-Path $tmp $d) -Recurse -Force } }
           if (Test-Path dist-ci\HybridCore-Setup.exe) { (Get-Item dist-ci\HybridCore-Setup.exe).Length | ForEach-Object { "installer size: $_ bytes" } | Out-File (Join-Path $tmp 'installer_size.txt') }
           "commit: $env:GITHUB_SHA`nrun: $env:GITHUB_RUN_ID`njob status: $env:JOB_STATUS" | Out-File (Join-Path $tmp 'README.txt')
           Push-Location $tmp
