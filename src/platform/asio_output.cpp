@@ -224,9 +224,7 @@ std::string AsioOutput::open(const Config& cfg) {
     info_.bufferFrames = s.frames;
     info_.channels = 2;
     info_.outputLatencyMs = 1000.0 * static_cast<double>(outLat) / cfg.sampleRate;
-    char drv[64] = {};
-    ASIOGetDriverName(drv);
-    info_.description = "ASIO: " + std::string(drv[0] ? drv : name.data()) + ", " + std::to_string(static_cast<int>(cfg.sampleRate)) + " Hz, " +
+    info_.description = "ASIO: " + std::string(name.data()) + ", " + std::to_string(static_cast<int>(cfg.sampleRate)) + " Hz, " +
                         std::to_string(s.frames) + " frames";
     resetRequested_.store(false);
     glitches_.store(0);

@@ -1259,7 +1259,8 @@ float App::knob(int id, const LY::Knob& k, float value, float mn, float mx, Tape
         if (taper == Taper::Log && mn > 0) return mn * std::pow(mx / mn, n);
         return mn + n * (mx - mn);
     };
-    const float r = k.r - 8.0f;
+    const float ks = std::min(1.0f, k.r / 46.0f);   // small knobs shrink their rings in proportion
+    const float r = k.r - 8.0f * ks;
     const float dx = in_.mx - k.cx, dy = in_.my - k.cy;
     const bool hot = dx * dx + dy * dy <= r * r;
     float norm = clampf(toNorm(value), 0, 1);
@@ -1275,25 +1276,25 @@ float App::knob(int id, const LY::Knob& k, float value, float mn, float mx, Tape
 
     // ---- draw: tick dots, track ring, value arc, metal body, pointer ----
     const float a0 = 0.75f * 3.14159265f, sweep = 1.5f * 3.14159265f;
-    const float ringR = k.r - 12.0f, bodyR = k.r - 22.0f;
+    const float ringR = k.r - 12.0f * ks, bodyR = k.r - 22.0f * ks;
     const float alpha = dim ? 0.35f : 1.0f;
     for (int i = 0; i <= 10; ++i) {
         const float a = a0 + sweep * i / 10.0f;
-        gfx_.circle(k.cx + (k.r - 3.0f) * std::cos(a), k.cy + (k.r - 3.0f) * std::sin(a), i % 5 == 0 ? 2.2f : 1.4f, Color(0x8A9AA6FF).alpha(0.7f * alpha));
+        gfx_.circle(k.cx + (k.r - 3.0f * ks) * std::cos(a), k.cy + (k.r - 3.0f * ks) * std::sin(a), (i % 5 == 0 ? 2.2f : 1.4f) * ks, Color(0x8A9AA6FF).alpha(0.7f * alpha));
     }
-    gfx_.arc(k.cx, k.cy, ringR, a0, a0 + sweep, 6.0f, Color(0x16232BFF).alpha(alpha));
+    gfx_.arc(k.cx, k.cy, ringR, a0, a0 + sweep, 6.0f * ks, Color(0x16232BFF).alpha(alpha));
     const float va = a0 + sweep * norm;
     const float from = bipolar ? a0 + sweep * 0.5f : a0;
     if (std::fabs(va - from) > 0.01f) {
-        gfx_.arc(k.cx, k.cy, ringR, std::min(from, va), std::max(from, va), 12.0f, accent.alpha(0.18f * alpha));
-        gfx_.arc(k.cx, k.cy, ringR, std::min(from, va), std::max(from, va), 5.0f, accent.alpha(alpha));
+        gfx_.arc(k.cx, k.cy, ringR, std::min(from, va), std::max(from, va), 12.0f * ks, accent.alpha(0.18f * alpha));
+        gfx_.arc(k.cx, k.cy, ringR, std::min(from, va), std::max(from, va), 5.0f * ks, accent.alpha(alpha));
     }
     gfx_.circle(k.cx, k.cy + 2.0f, bodyR + 3.0f, Color(0x000000FF).alpha(0.6f));
     gfx_.circleGradient(k.cx, k.cy, bodyR + 1.5f, Color(0x2A2E33FF), Color(0x0B0D10FF));
     gfx_.circleGradient(k.cx, k.cy, bodyR - 1.0f, Color(0xD5DADFFF).alpha(alpha), Color(0x3A3F45FF).alpha(alpha));
-    gfx_.circleGradient(k.cx, k.cy, bodyR - 7.0f, Color(0x555B62FF).alpha(alpha), Color(0xBFC4CAFF).alpha(alpha));
+    gfx_.circleGradient(k.cx, k.cy, bodyR - 7.0f * ks, Color(0x555B62FF).alpha(alpha), Color(0xBFC4CAFF).alpha(alpha));
     const float px = std::cos(va), py = std::sin(va);
-    gfx_.line(k.cx + px * bodyR * 0.25f, k.cy + py * bodyR * 0.25f, k.cx + px * (bodyR - 3.0f), k.cy + py * (bodyR - 3.0f), 3.5f, Color(0xFFFFFFFF).alpha(alpha));
+    gfx_.line(k.cx + px * bodyR * 0.25f, k.cy + py * bodyR * 0.25f, k.cx + px * (bodyR - 3.0f), k.cy + py * (bodyR - 3.0f * ks), 3.5f * ks, Color(0xFFFFFFFF).alpha(alpha));
     if (hot || activeId_ == id) { tooltip_ = valueText; tipX_ = k.cx; tipY_ = k.cy - k.r - 6.0f; tipSec_ = curSec_; }
     return out;
 }
@@ -1751,7 +1752,8 @@ void App::drawDestroyer() {
         while ((n = tap.pop_n(buf, 2048)) > 0) if (live) spec_.feed(buf, n);
     }
     const Rect sc = R(LY::dsScreen).inset(3);
-    const Rect area{sc.x0, sc.y0, sc.x1 - 16, sc.y1};
+    constexpr float kStripW = 172.0f;   // right-hand strip: the four fine controls
+    const Rect area{sc.x0, sc.y0, sc.x1 - 16 - kStripW, sc.y1};
     const float cw = area.w() / Spectrogram::kCols, ch = area.h() / Spectrogram::kRows;
     for (int c = 0; c < Spectrogram::kCols; ++c) {
         const int col = (spec_.head + c) % Spectrogram::kCols;
@@ -1774,9 +1776,12 @@ void App::drawDestroyer() {
     const std::string selName = sel().loaded ? shownName(selected_) : std::string();
     gfx_.text(area.x1 - gfx_.textWidth(selName, Font::Small) - 6, area.y0 + 4, selName, Font::Small, kText);
     const auto& t = ds->telemetry();
-    gfx_.roundRect({area.x0 + 62, area.y1 - 24, area.x0 + 470, area.y1 - 2}, 4, 0x000000B0);
-    gfx_.text(area.x0 + 70, area.y1 - 22, fmt("HF jitter %.1f dB", t.hfJitterDb.load()) + fmt("   HF change %+.1f dB", t.shimmerCutDb.load()) + fmt("   coherence %.2f", t.hfCoherence.load()),
-              Font::Small, Color(kText).alpha(0.85f));
+    {
+        const std::string rd = fmt("jitter %.1f dB", t.hfJitterDb.load()) + fmt("  change %+.1f dB", t.shimmerCutDb.load()) + fmt("  coh %.2f", t.hfCoherence.load());
+        const float rw = gfx_.textWidth(rd, Font::Small) + 16;
+        gfx_.roundRect({area.x0 + 50, area.y1 - 24, area.x0 + 50 + rw, area.y1 - 2}, 4, 0x000000B0);
+        gfx_.text(area.x0 + 58, area.y1 - 22, rd, Font::Small, Color(kText).alpha(0.85f));
+    }
 
     // Resolution selector (rebuilds this stem's chain off the audio thread).
     static const char* res[] = {"1024", "2048", "4096"};
@@ -1802,6 +1807,32 @@ void App::drawDestroyer() {
     auto& thr = ds->param(ArtifactProcessor::kShimTol);
     auto& bl = ds->param(ArtifactProcessor::kPhase);
     auto& dc = ds->param(ArtifactProcessor::kDecay);
+    // Fine controls strip (de-esser + HF split + max cut). Drawn live, no art needed.
+    {
+        const Rect strip{area.x1 + 8, sc.y0 + 2, sc.x1 - 16, sc.y1 - 2};
+        gfx_.roundRect(strip, 6, 0x0A0E12C8);
+        struct Fine { int id; std::size_t p; const char* name; float mn, mx; Taper tp; float def; const char* unit; };
+        static const Fine fine[4] = {
+            {313, ArtifactProcessor::kSib, "DE-ESS", 0, 1, Taper::Linear, 0.0f, "%"},
+            {314, ArtifactProcessor::kSibThr, "ESS THR", -30, 12, Taper::Linear, 0.0f, "dB"},
+            {315, ArtifactProcessor::kSplit, "HF SPLIT", 2000, 16000, Taper::Log, 7000.0f, "Hz"},
+            {316, ArtifactProcessor::kFloor, "MAX CUT", -40, 0, Taper::Linear, -15.0f, "dB"}};
+        for (int i = 0; i < 4; ++i) {
+            const Fine& f = fine[i];
+            auto& pr = ds->param(f.p);
+            const float cx = strip.x0 + strip.w() * (i % 2 == 0 ? 0.28f : 0.74f);
+            const float cy = strip.y0 + 52.0f + static_cast<float>(i / 2) * 92.0f;
+            const LY::Knob k{cx, cy, 28.0f};
+            const float v = pr.target();
+            const std::string vt = f.p == ArtifactProcessor::kSib ? fmt("De-ess amount %.0f %%", v * 100)
+                                 : f.p == ArtifactProcessor::kSibThr ? fmt("Ess threshold %+.1f dB", v)
+                                 : f.p == ArtifactProcessor::kSplit ? fmt("HF split %.0f Hz (repair works above this)", v)
+                                                                   : fmt("Max cut %.1f dB", v);
+            pr.set(knob(f.id, k, v, f.mn, f.mx, f.tp, f.def, false, kCyan, vt, by));
+            const float tw = gfx_.textWidth(f.name, Font::Small);
+            gfx_.text(cx - tw * 0.5f, cy + 31.0f, f.name, Font::Small, Color(kDim).alpha(0.95f));
+        }
+    }
     thr.set(knob(310, LY::dsThreshold, thr.target(), 0, 12, Taper::Linear, 1.5f, false, kCyan, fmt("Threshold %.1f dB above envelope", thr.target()), by));
     bl.set(knob(311, LY::dsBleed, bl.target(), 0, 1, Taper::Linear, 0.3f, false, kCyan, fmt("Bleed (HF stereo phase fix) %.0f %%", bl.target() * 100), by));
     dc.set(knob(312, LY::dsDecay, dc.target(), 5, 200, Taper::Log, 10, false, kCyan, fmt("Decay %.0f ms", dc.target()), by));

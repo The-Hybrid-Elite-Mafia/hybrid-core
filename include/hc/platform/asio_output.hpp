@@ -52,12 +52,12 @@ public:
     // True once if the driver asked the host to reset (sample-rate change, control panel, device unplugged).
     bool takeResetRequest() noexcept { return resetRequested_.exchange(false, std::memory_order_acq_rel); }
 
-    struct Impl;   // public only so the driver's C callbacks can reach it
+    struct Impl;   // public (with the two flags below) only so the driver's C callbacks can reach them
+    std::atomic<std::uint64_t> glitches_{0};
+    std::atomic<bool> resetRequested_{false};
 private:
     std::unique_ptr<Impl> impl_;
     DeviceInfo info_;
-    std::atomic<std::uint64_t> glitches_{0};
-    std::atomic<bool> resetRequested_{false};
 };
 #endif
 

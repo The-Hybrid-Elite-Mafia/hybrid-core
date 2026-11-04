@@ -53,7 +53,9 @@ if(WIN32)
   if(HC_WITH_ASIO)
     target_compile_definitions(HybridCore PRIVATE HC_HAS_ASIO_SDK)
   endif()
-  target_compile_definitions(HybridCore PRIVATE UNICODE _UNICODE)
+  # UNICODE only for our own sources: the Steinberg SDK's asiolist.cpp is written for the ANSI API.
+  set_source_files_properties(studio/main.cpp studio/gfx.cpp src/platform/wasapi_output.cpp src/platform/asio_output.cpp
+                              PROPERTIES COMPILE_DEFINITIONS "UNICODE;_UNICODE")
   target_link_libraries(HybridCore PRIVATE hybrid_core d3d11 dxgi d3dcompiler windowscodecs ole32 uuid avrt comdlg32 shell32 gdi32 user32)
   if(MSVC)
     target_link_options(HybridCore PRIVATE /ENTRY:wWinMainCRTStartup /MANIFEST:NO)
