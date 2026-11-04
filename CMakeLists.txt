@@ -16,11 +16,14 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+include(cmake/asio.cmake)
+
 add_library(hybrid_core INTERFACE)
 target_include_directories(hybrid_core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 if(MSVC)
   # /arch:AVX2 enables AVX2 + FMA codegen; /fp:precise keeps loudness math deterministic.
-  target_compile_options(hybrid_core INTERFACE /arch:AVX2 /O2 /fp:precise /permissive- /W4 /utf-8)
+  target_compile_options(hybrid_core INTERFACE /arch:AVX2 /O2 /fp:precise /permissive- /W4 /utf-8
+    /wd4324)   # C4324 = "padded because of alignas": the padding is on purpose (64-byte cache-line alignment)
   target_compile_definitions(hybrid_core INTERFACE NOMINMAX _CRT_SECURE_NO_WARNINGS)
 else()
   target_compile_options(hybrid_core INTERFACE -mavx2 -mfma -O2 -Wall -Wextra)
@@ -45,8 +48,11 @@ if(WIN32)
   target_link_libraries(hc_play PRIVATE hybrid_core ole32 avrt)
 
   # THE HYBRID CORE Studio — the faceplate app.
-  add_executable(HybridCore WIN32 studio/main.cpp studio/gfx.cpp src/platform/wasapi_output.cpp studio/studio.rc)
-  target_include_directories(HybridCore PRIVATE studio)
+  add_executable(HybridCore WIN32 studio/main.cpp studio/gfx.cpp src/platform/wasapi_output.cpp src/platform/asio_output.cpp ${HC_ASIO_SOURCES} studio/studio.rc)
+  target_include_directories(HybridCore PRIVATE studio ${HC_ASIO_INCLUDES})
+  if(HC_WITH_ASIO)
+    target_compile_definitions(HybridCore PRIVATE HC_HAS_ASIO_SDK)
+  endif()
   target_compile_definitions(HybridCore PRIVATE UNICODE _UNICODE)
   target_link_libraries(HybridCore PRIVATE hybrid_core d3d11 dxgi d3dcompiler windowscodecs ole32 uuid avrt comdlg32 shell32 gdi32 user32)
   if(MSVC)

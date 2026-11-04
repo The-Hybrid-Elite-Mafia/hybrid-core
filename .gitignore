@@ -3,3 +3,5 @@ build-win/
 demo_master.wav
 test_results.txt
 render_report.txt
+/external/asiosdk/*
+!/external/asiosdk/README.md

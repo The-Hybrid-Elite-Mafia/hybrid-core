@@ -35,6 +35,7 @@
 #include "hc/engine/stem_engine.hpp"
 #include "hc/platform/thread_priority.hpp"
 #include "hc/platform/wasapi_output.hpp"
+#include "hc/platform/asio_output.hpp"
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -196,6 +197,9 @@ private:
     // audio / engine
     void startAudio();
     void stopAudio();
+    void loadAudioSettings();
+    void saveAudioSettings() const;
+    std::wstring settingsPath() const;
     void rebuildEngine(double sr, const Session* fromSession = nullptr);
     ChainState captureStem(int s) const;
     ChainState captureMaster() const;
@@ -295,6 +299,12 @@ private:
 
     std::unique_ptr<StemEngine> eng_;
     WasapiOutput dev_;
+#if defined(HC_HAS_ASIO_SDK)
+    AsioOutput asio_;
+#endif
+    std::wstring asioDriver_;          // empty = WASAPI; otherwise the chosen ASIO driver name
+    bool usingAsio_ = false;
+    std::vector<AsioDriverEntry> asioList_;
     bool exclusive_ = false, audioRunning_ = false, nullAudio_ = false;
     std::thread nullThread_;
     std::atomic<bool> nullRun_{false};
@@ -388,6 +398,7 @@ bool App::init(HINSTANCE inst, int show) {
     gfx_.setSkin(rgba.data(), iw, ih);
 
     trHist_.assign(280, TransientViz{});
+    loadAudioSettings();   // remembered output choice
     rebuildEngine(48000.0);
     ShowWindow(hwnd_, show == SW_SHOWMINIMIZED || show == SW_MINIMIZE ? show : SW_SHOWMAXIMIZED);   // 16:9 faceplate: open maximized
     UpdateWindow(hwnd_);
@@ -524,6 +535,23 @@ void App::audioCallback(void* user, float* L, float* R, std::uint32_t n) noexcep
 
 void App::startAudio() {
     if (audioRunning_ || !eng_) return;
+    usingAsio_ = false;
+#if defined(HC_HAS_ASIO_SDK)
+    if (!asioDriver_.empty()) {
+        AsioOutput::Config ac;
+        ac.driverName = asioDriver_; ac.sampleRate = sr_; ac.maxBlock = kBlock;
+        std::string aerr = asio_.open(ac);
+        if (aerr.empty()) aerr = asio_.start(&App::audioCallback, eng_.get());
+        if (aerr.empty()) {
+            deviceDesc_ = asio_.info().description;
+            usingAsio_ = true; audioRunning_ = true; nullAudio_ = false;
+            return;
+        }
+        asio_.close();
+        toast("ASIO unavailable (" + aerr + ") — using Windows audio");
+        asioDriver_.clear();
+    }
+#endif
     WasapiOutput::Config cfg;
     cfg.mode = exclusive_ ? WasapiOutput::Mode::Exclusive : WasapiOutput::Mode::SharedLowLatency;
     cfg.sampleRate = sr_;
@@ -560,10 +588,48 @@ void App::startAudio() {
     audioRunning_ = true; nullAudio_ = true;
 }
 
+std::wstring App::settingsPath() const {
+    wchar_t buf[MAX_PATH] = {};
+    const DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", buf, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return {};
+    std::wstring dir = std::wstring(buf) + L"\\HEM Hybrid Core 2";
+    CreateDirectoryW(dir.c_str(), nullptr);
+    return dir + L"\\settings.ini";
+}
+
+// settings.ini lines:  audio=shared | exclusive | asio:<driver name>
+void App::loadAudioSettings() {
+    const std::wstring path = settingsPath();
+    if (path.empty()) return;
+    std::ifstream f(path);
+    std::string line;
+    while (std::getline(f, line)) {
+        while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+        if (line.rfind("audio=", 0) != 0) continue;
+        const std::string v = line.substr(6);
+        if (v == "exclusive") exclusive_ = true;
+        else if (v == "shared") exclusive_ = false;
+        else if (v.rfind("asio:", 0) == 0) asioDriver_ = widen(v.substr(5));
+    }
+}
+
+void App::saveAudioSettings() const {
+    const std::wstring path = settingsPath();
+    if (path.empty()) return;
+    std::ofstream f(path, std::ios::trunc);
+    if (!asioDriver_.empty()) f << "audio=asio:" << narrow(asioDriver_) << "\n";
+    else f << "audio=" << (exclusive_ ? "exclusive" : "shared") << "\n";
+}
+
 void App::stopAudio() {
     if (!audioRunning_) return;
     if (nullAudio_) { nullRun_ = false; if (nullThread_.joinable()) nullThread_.join(); }
-    else dev_.close();
+    else if (usingAsio_) {
+#if defined(HC_HAS_ASIO_SDK)
+        asio_.close();
+#endif
+    } else dev_.close();
+    usingAsio_ = false;
     audioRunning_ = false;
 }
 
@@ -986,7 +1052,7 @@ void App::onExportDone() {
 // ====================================================================================== menus
 enum MenuId {
     ID_LOAD = 100, ID_LOAD_FOLDER = 99, ID_CLEAR_ALL = 101, ID_OPEN_SESSION, ID_SAVE_SESSION, ID_EXPORT, ID_EXIT,
-    ID_SHARED, ID_EXCLUSIVE, ID_RESET_METERS, ID_SLOT_LOAD, ID_SLOT_CLEAR, ID_SLOT_RESET, ID_VIEW_TOGGLE, ID_SAVE_SESSION_AS
+    ID_SHARED, ID_EXCLUSIVE, ID_ASIO_BASE = 2000, ID_RESET_METERS, ID_SLOT_LOAD, ID_SLOT_CLEAR, ID_SLOT_RESET, ID_VIEW_TOGGLE, ID_SAVE_SESSION_AS
 };
 
 void App::showMainMenu() {
@@ -1023,8 +1089,18 @@ void App::showMainMenu() {
 
 void App::showSettingsMenu() {
     HMENU m = CreatePopupMenu();
-    AppendMenuW(m, MF_STRING | (exclusive_ ? 0 : MF_CHECKED), ID_SHARED, L"Audio: Shared (plays with other apps)");
-    AppendMenuW(m, MF_STRING | (exclusive_ ? MF_CHECKED : 0), ID_EXCLUSIVE, L"Audio: Exclusive (lowest latency)");
+    const bool onAsio = !asioDriver_.empty();
+    AppendMenuW(m, MF_STRING | ((!onAsio && !exclusive_) ? MF_CHECKED : 0), ID_SHARED, L"Audio: Shared (plays with other apps)");
+    AppendMenuW(m, MF_STRING | ((!onAsio && exclusive_) ? MF_CHECKED : 0), ID_EXCLUSIVE, L"Audio: Exclusive (lowest latency)");
+    asioList_ = enumerateAsioDrivers();
+#if defined(HC_HAS_ASIO_SDK)
+    for (std::size_t i = 0; i < asioList_.size() && i < 200; ++i)
+        AppendMenuW(m, MF_STRING | (asioDriver_ == asioList_[i].name ? MF_CHECKED : 0), static_cast<UINT_PTR>(ID_ASIO_BASE + i),
+                    (L"Audio: ASIO — " + asioList_[i].name).c_str());
+    if (asioList_.empty()) AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"Audio: ASIO — no 64-bit ASIO driver found");
+#else
+    AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"Audio: ASIO — not in this build");
+#endif
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING | MF_GRAYED, 0, widen(deviceDesc_).c_str());
     AppendMenuW(m, MF_STRING | MF_GRAYED, 0, widen("Graphics: " + gfx_.adapterName()).c_str());
@@ -1036,13 +1112,19 @@ void App::showSettingsMenu() {
     DestroyMenu(m);
     if (cmd == ID_SHARED || cmd == ID_EXCLUSIVE) {
         const bool want = cmd == ID_EXCLUSIVE;
-        if (want != exclusive_) { stopAudio(); exclusive_ = want; startAudio(); toast(deviceDesc_); }
+        if (want != exclusive_ || onAsio) { stopAudio(); exclusive_ = want; asioDriver_.clear(); startAudio(); saveAudioSettings(); toast(deviceDesc_); }
+    } else if (cmd >= ID_ASIO_BASE && cmd < ID_ASIO_BASE + 200 && static_cast<std::size_t>(cmd - ID_ASIO_BASE) < asioList_.size()) {
+        stopAudio();
+        asioDriver_ = asioList_[static_cast<std::size_t>(cmd - ID_ASIO_BASE)].name;
+        startAudio();
+        saveAudioSettings();
+        toast(deviceDesc_);
     } else if (cmd == ID_RESET_METERS && eng_) { eng_->requestMeterReset(); toast("Meters reset"); }
 }
 
 void App::showAbout() {
     const std::string s = std::string("THE HYBRID CORE ") + kVersion + "\nHybrid Elite Mafia Studio Suite\n\n"
-        "Scratch-built C++20 audio engine · WASAPI · AVX2 · Direct3D 11\n\n"
+        "Scratch-built C++23 audio engine · WASAPI + ASIO · AVX2 · Direct3D 11\n\n"
         "Keys:\n  Space  play / stop\n  Home  back to start\n  Ctrl+L  load stems    Ctrl+E  export master\n"
         "  Ctrl+O / Ctrl+S  open / save session    Ctrl+Shift+S  save as\n\n"
         "Knobs: drag up/down (Shift = fine), mouse wheel, double-click = default.\n"
@@ -1295,6 +1377,11 @@ void App::frame() {
     for (std::size_t i = 0; i < kNumStems; ++i)
         if (rebuildPending_[i]) { rebuildPending_[i] = false; publishStemChain(static_cast<int>(i), &rebuildState_[i]); }
     if (eng_) eng_->collectGarbage();
+#if defined(HC_HAS_ASIO_SDK)
+    if (usingAsio_ && asio_.takeResetRequest()) {   // driver asked for a restart (rate change, panel, unplugged)
+        stopAudio(); startAudio(); toast("ASIO restarted: " + deviceDesc_);
+    }
+#endif
     if (now() - lastDirtyCheck_ > 0.25) checkDirty();   // "*" in the title as soon as something changes
 
     // Meters.
@@ -2054,6 +2141,7 @@ LRESULT App::wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case WM_GETMINMAXINFO: {
         auto* mm = reinterpret_cast<MINMAXINFO*>(l);
         mm->ptMinTrackSize.x = 420; mm->ptMinTrackSize.y = 520;
+        if (!shotDir_.empty()) { mm->ptMaxTrackSize.x = 8192; mm->ptMaxTrackSize.y = 8192; }   // pictures may be bigger than the build machine's screen
         return 0;
     }
     case WM_DPICHANGED: {

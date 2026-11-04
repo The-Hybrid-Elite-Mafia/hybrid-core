@@ -19,11 +19,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure (MSVC, C++23)
+      - name: Fetch Steinberg ASIO SDK (not stored in the repo)
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force ci-out | Out-Null
-          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 2>&1 | Tee-Object -FilePath ci-out\configure.txt
+          powershell -ExecutionPolicy Bypass -File tools\fetch-asio-sdk.ps1 2>&1 | Tee-Object -FilePath ci-out\asio_fetch.txt
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Configure (MSVC, C++23, with ASIO)
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 -DHC_WITH_ASIO=ON 2>&1 | Tee-Object -FilePath ci-out\configure.txt
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Build
@@ -69,6 +75,10 @@ jobs:
           mkdir build-win
           mkdir dist-ci
           copy build\Release\HybridCore.exe build-win\HybridCore.exe
+          copy LICENSE build-win\LICENSE.txt
+          copy THIRD-PARTY-NOTICES.txt build-win\THIRD-PARTY-NOTICES.txt
+          powershell -NoProfile -ExecutionPolicy Bypass -File tools\collect-asio-license.ps1 build-win\ASIO-SDK-LICENSE.txt
+          if errorlevel 1 exit /b 1
           rc /nologo /I installer /fo build-win\setup.res installer\setup.rc
           if errorlevel 1 exit /b 1
           cl /nologo /std:c++latest /EHsc /O2 /MT /DUNICODE /D_UNICODE /DNOMINMAX /Iinstaller installer\setup.cpp build-win\setup.res /Fe:dist-ci\HybridCore-Setup.exe /link /SUBSYSTEM:WINDOWS ole32.lib uuid.lib shell32.lib advapi32.lib user32.lib gdi32.lib
@@ -85,6 +95,7 @@ jobs:
           Rec "installer exit code is 0 (was $($p.ExitCode))" ($p.ExitCode -eq 0)
           Rec 'HybridCore.exe is in the install folder' (Test-Path (Join-Path $dir 'HybridCore.exe'))
           Rec 'uninstaller is in the install folder' (Test-Path (Join-Path $dir 'Uninstall HYBRID CORE 2.0.exe'))
+          Rec 'licence texts installed (GPLv3, notices, ASIO SDK licence)' ((Test-Path (Join-Path $dir 'licenses\LICENSE.txt')) -and (Test-Path (Join-Path $dir 'licenses\THIRD-PARTY-NOTICES.txt')) -and (Test-Path (Join-Path $dir 'licenses\ASIO-SDK-LICENSE.txt')))
           Rec 'desktop shortcut exists' (Test-Path (Join-Path ([Environment]::GetFolderPath('Desktop')) 'THE HYBRID CORE 2.0.lnk'))
           Rec 'Settings > Apps entry exists' (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\HEM.HybridCore2')
           New-Item -ItemType Directory -Force installed-shots | Out-Null

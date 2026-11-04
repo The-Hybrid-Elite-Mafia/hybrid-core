@@ -1,0 +1,14 @@
+THE HYBRID CORE 2.x — THIRD-PARTY NOTICES
+
+ASIO
+  ASIO is a trademark and software of Steinberg Media Technologies GmbH.
+  Builds with ASIO include host code from the Steinberg ASIO SDK 2.3.4, which Steinberg
+  offers under either GPLv3 or Steinberg's proprietary licensing agreement.
+  THE HYBRID CORE 2.x is released under the GNU General Public License v3 (see LICENSE.txt),
+  and uses the SDK under its GPLv3 option. The SDK's own licence text is installed in the
+  "licenses" folder. The complete source code is public:
+  https://github.com/The-Hybrid-Elite-Mafia/hybrid-core
+
+Everything else in THE HYBRID CORE 2.x, including the faceplate art, is by Hybrid Elite Mafia and is
+covered by the GPLv3 for the code. No other third-party libraries are used: only the C++ standard
+library and Windows itself (WASAPI, Direct3D 11, Windows Imaging Component).

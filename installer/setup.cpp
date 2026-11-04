@@ -156,6 +156,15 @@ int install() {
     std::wstring err;
     if (!writeResource(IDR_PAYLOAD_APP, appExe(), err)) { say(err.c_str(), kTitle, MB_ICONERROR); return 2; }
 
+    {   // licence texts (GPLv3, third-party notices, Steinberg ASIO SDK licence)
+        const std::wstring ld = dir + L"\\licenses";
+        SHCreateDirectoryExW(nullptr, ld.c_str(), nullptr);
+        std::wstring lerr;
+        if (!writeResource(IDR_LIC_GPL, ld + L"\\LICENSE.txt", lerr) ||
+            !writeResource(IDR_LIC_NOTICES, ld + L"\\THIRD-PARTY-NOTICES.txt", lerr) ||
+            !writeResource(IDR_LIC_ASIO, ld + L"\\ASIO-SDK-LICENSE.txt", lerr)) { say(lerr.c_str(), kTitle, MB_ICONERROR); return 2; }
+    }
+
     wchar_t self[MAX_PATH * 4];
     GetModuleFileNameW(nullptr, self, static_cast<DWORD>(std::size(self)));
     if (lstrcmpiW(self, uninstExe().c_str()) != 0) CopyFileW(self, uninstExe().c_str(), FALSE);
@@ -213,6 +222,10 @@ int uninstall() {
     }
     DeleteFileW(startLnk().c_str());
     DeleteFileW(desktopLnk().c_str());
+    DeleteFileW((installDir() + L"\\licenses\\LICENSE.txt").c_str());
+    DeleteFileW((installDir() + L"\\licenses\\THIRD-PARTY-NOTICES.txt").c_str());
+    DeleteFileW((installDir() + L"\\licenses\\ASIO-SDK-LICENSE.txt").c_str());
+    RemoveDirectoryW((installDir() + L"\\licenses").c_str());
     RegDeleteTreeW(HKEY_CURRENT_USER, L"Software\\Classes\\HEM.HybridCore2.Session");
     {
         HKEY ow;

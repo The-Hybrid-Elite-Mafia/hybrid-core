@@ -338,10 +338,20 @@ std::string Renderer::savePng(ID3D11Texture2D* tex, const std::wstring& path) {
     else if (FAILED(fac->CreateEncoder(GUID_ContainerFormatPng, nullptr, &enc)) || FAILED(enc->Initialize(stream, WICBitmapEncoderNoCache))) err = "screenshot: cannot start the PNG encoder";
     else if (FAILED(enc->CreateNewFrame(&frame, &props)) || FAILED(frame->Initialize(props)) || FAILED(frame->SetSize(d.Width, d.Height))) err = "screenshot: cannot start the PNG frame";
     else {
-        WICPixelFormatGUID pf = GUID_WICPixelFormat32bppBGR;   // alpha ignored
-        if (FAILED(frame->SetPixelFormat(&pf))) err = "screenshot: pixel format";
-        else if (FAILED(frame->WritePixels(d.Height, m.RowPitch, m.RowPitch * d.Height, static_cast<BYTE*>(m.pData)))) err = "screenshot: cannot write pixels";
-        else if (FAILED(frame->Commit()) || FAILED(enc->Commit())) err = "screenshot: cannot finish the PNG";
+        WICPixelFormatGUID pf = GUID_WICPixelFormat32bppBGRA;   // PNG's own 32-bit format: no conversion
+        if (FAILED(frame->SetPixelFormat(&pf)) || !IsEqualGUID(pf, GUID_WICPixelFormat32bppBGRA)) err = "screenshot: the PNG encoder wants another pixel format";
+        else {
+            // Own copy with the alpha forced opaque (the frame's alpha is not meant to be seen).
+            std::vector<std::uint8_t> px(static_cast<std::size_t>(d.Width) * d.Height * 4);
+            for (UINT y = 0; y < d.Height; ++y) {
+                const std::uint8_t* src = static_cast<const std::uint8_t*>(m.pData) + static_cast<std::size_t>(y) * m.RowPitch;
+                std::uint8_t* dst = px.data() + static_cast<std::size_t>(y) * d.Width * 4;
+                std::memcpy(dst, src, static_cast<std::size_t>(d.Width) * 4);
+                for (UINT x = 0; x < d.Width; ++x) dst[x * 4 + 3] = 255;
+            }
+            if (FAILED(frame->WritePixels(d.Height, d.Width * 4, static_cast<UINT>(px.size()), px.data()))) err = "screenshot: cannot write pixels";
+            else if (FAILED(frame->Commit()) || FAILED(enc->Commit())) err = "screenshot: cannot finish the PNG";
+        }
     }
     if (props) props->Release();
     if (frame) frame->Release();

@@ -2,6 +2,9 @@
 #include <winver.h>
 IDI_SETUP ICON "../studio/assets/hybridcore.ico"
 IDR_PAYLOAD_APP RCDATA "../build-win/HybridCore.exe"
+IDR_LIC_GPL RCDATA "../build-win/LICENSE.txt"
+IDR_LIC_NOTICES RCDATA "../build-win/THIRD-PARTY-NOTICES.txt"
+IDR_LIC_ASIO RCDATA "../build-win/ASIO-SDK-LICENSE.txt"
 1 24 "setup.manifest"
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION 2,1,0,0

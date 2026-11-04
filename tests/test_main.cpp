@@ -28,7 +28,9 @@ static int g_fail = 0;
 // process is counted while g_countAllocs is on.
 static std::atomic<long> g_allocs{0};
 static std::atomic<bool> g_countAllocs{false};
+#if defined(__GNUC__)
 #pragma GCC diagnostic ignored "-Wmismatched-new-delete"
+#endif
 void* operator new(std::size_t n) {
     if (g_countAllocs.load(std::memory_order_relaxed)) g_allocs.fetch_add(1, std::memory_order_relaxed);
     if (void* p = std::malloc(n ? n : 1)) return p;
