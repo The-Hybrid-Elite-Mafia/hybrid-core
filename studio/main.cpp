@@ -1821,7 +1821,7 @@ void App::drawDestroyer() {
             const Fine& f = fine[i];
             auto& pr = ds->param(f.p);
             const float cx = strip.x0 + strip.w() * (i % 2 == 0 ? 0.28f : 0.74f);
-            const float cy = strip.y0 + 52.0f + static_cast<float>(i / 2) * 92.0f;
+            const float cy = strip.y0 + 44.0f + static_cast<float>(i / 2) * 84.0f;
             const LY::Knob k{cx, cy, 28.0f};
             const float v = pr.target();
             const std::string vt = f.p == ArtifactProcessor::kSib ? fmt("De-ess amount %.0f %%", v * 100)
@@ -1830,7 +1830,7 @@ void App::drawDestroyer() {
                                                                    : fmt("Max cut %.1f dB", v);
             pr.set(knob(f.id, k, v, f.mn, f.mx, f.tp, f.def, false, kCyan, vt, by));
             const float tw = gfx_.textWidth(f.name, Font::Small);
-            gfx_.text(cx - tw * 0.5f, cy + 31.0f, f.name, Font::Small, Color(kDim).alpha(0.95f));
+            gfx_.text(cx - tw * 0.5f, cy + 30.0f, f.name, Font::Small, Color(kDim).alpha(0.95f));
         }
     }
     thr.set(knob(310, LY::dsThreshold, thr.target(), 0, 12, Taper::Linear, 1.5f, false, kCyan, fmt("Threshold %.1f dB above envelope", thr.target()), by));

@@ -1,8 +1,9 @@
 # THE HYBRID CORE 2.0 — Hybrid Elite Mafia Studio Suite
 
-A 13-stem repair, mixing and mastering studio for Windows, written from scratch in C++20.
-It uses no JUCE, no Qt and no third-party libraries — only the C++ standard library and Windows itself
-(WASAPI audio, Direct3D 11 graphics).
+A 13-stem repair, mixing and mastering studio for Windows, written from scratch in C++23 (MSVC).
+It uses no JUCE and no Qt — only the C++ standard library and Windows itself (WASAPI audio, Direct3D 11
+graphics), plus the Steinberg ASIO SDK for ASIO output. The program is released under GPLv3 (see LICENSE and
+THIRD-PARTY-NOTICES.txt); the ASIO SDK is downloaded at build time and never stored in this repo.
 
 ## Install
 
@@ -48,6 +49,11 @@ master lands on the target LUFS under the true-peak ceiling.
 
 - Tested: engine DSP (FFT, STFT, BS.1770 loudness, true peak, limiter, Artifact Destroyer, Resonance,
   Transient, Width), the 13-stem engine (sanitizers clean), the installer and uninstaller, and the app
-  rendering and playing 13 stems under Wine.
-- Not built yet: ASIO (it needs Steinberg's SDK; the faceplate art mentions ASIO, but playback is WASAPI).
+  rendering and playing 13 stems under Wine; every build now also runs all tests, the real app (screenshots) and an
+  install / start / uninstall test on a Windows runner.
+- ASIO output is built in (Settings menu lists the 64-bit ASIO drivers installed on the PC; the choice is remembered in
+  %LOCALAPPDATA%\HEM Hybrid Core 2\settings.ini; an unavailable driver falls back to Windows audio). It compiles and the
+  app starts on the build machine, but it has NOT been tried with a real ASIO driver or sound card yet.
+- Real audio playback (WASAPI) and the real GPU have not been tested on the build machine (it has no sound device and
+  uses a software graphics driver). Test results, screenshots and the install test come from GitHub Actions (branch ci-results-*).
 - Stems at different sample rates are converted when loaded (to the rate of the first stem). Tested: see the resampler section of the test run.
