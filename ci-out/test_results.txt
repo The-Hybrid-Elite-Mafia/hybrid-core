@@ -1,0 +1,186 @@
+THE HYBRID CORE 2.0 — engine verification (AVX2 build)
+
+[PASS] ComplexFFT n=8 vs naive DFT (rel. error)                    4.32583e-08 
+[PASS] ComplexFFT n=8 round trip (max abs error)                   1.19209e-07 
+[PASS] ComplexFFT n=64 vs naive DFT (rel. error)                    1.0525e-07 
+[PASS] ComplexFFT n=64 round trip (max abs error)                  7.15256e-07 
+[PASS] ComplexFFT n=1024 vs naive DFT (rel. error)                  1.2803e-07 
+[PASS] ComplexFFT n=1024 round trip (max abs error)                1.07288e-06 
+[PASS] ComplexFFT n=4096 vs naive DFT (rel. error)                 1.55507e-07 
+[PASS] ComplexFFT n=4096 round trip (max abs error)                1.07288e-06 
+[PASS] RealFFT n=16 vs naive DFT (rel. error)                      4.88112e-08 
+[PASS] RealFFT n=16 round trip (max abs error)                     2.38419e-07 
+[PASS] RealFFT n=2048 vs naive DFT (rel. error)                    8.05826e-08 
+[PASS] RealFFT n=2048 round trip (max abs error)                   7.15256e-07 
+[PASS] RealFFT n=8192 vs naive DFT (rel. error)                    9.84465e-08 
+[PASS] RealFFT n=8192 round trip (max abs error)                   9.53674e-07 
+[PASS] STFT/OLA identity, odd block sizes (error, dB)                 -137.903 dB
+[PASS] STFT latency == N                                                  2048 samples
+[PASS] K-weighting coeffs @48k vs BS.1770 table (max abs diff)     8.88178e-16 
+[PASS] 1 kHz stereo sine @ -23 dBFS, 44100 Hz → I = -23.0 LUFS      -22.9905 LUFS
+[PASS]   same: M and S = -23.0 LUFS (44100 Hz)                        -22.9905 LUFS
+[PASS] 1 kHz stereo sine @ -23 dBFS, 48000 Hz → I = -23.0 LUFS      -22.9933 LUFS
+[PASS]   same: M and S = -23.0 LUFS (48000 Hz)                        -22.9933 LUFS
+[PASS] 1 kHz stereo sine @ -23 dBFS, 96000 Hz → I = -23.0 LUFS      -23.0106 LUFS
+[PASS]   same: M and S = -23.0 LUFS (96000 Hz)                        -23.0106 LUFS
+[PASS] Relative gate: -36/-23/-36 dBFS programme → I = -23.0        -23.0139 LUFS
+[PASS] LRA: 20 s @ -20 dBFS + 20 s @ -30 dBFS → 10 LU                     10 LU
+[PASS] fs/4 sine @45°: sample peak = -3.01 dBFS                       -3.0103 dBFS
+[PASS] fs/4 sine @45°: true peak = 0.0 dBTP                       0.000431767 dBTP
+[PASS] 997 Hz 0 dBFS sine: true peak ≈ 0.0 dBTP                  0.000330299 dBTP
+        worst-case sweep error at 16029 Hz
+[PASS] True-peak sweep 20 Hz–20 kHz @0 dBFS: worst |error|        0.00127557 dB
+[PASS] Limiter ceiling -1.0 dBTP on +14 dB-hot noise: measured TP     -1.03196 dBTP
+[PASS] Limiter: sample peak ≤ ceiling                                  -1.05 dBFS
+[PASS] Artifact Destroyer, amounts = 0 → transparent (error dB)     -138.225 dB
+[PASS] Shimmer smoother: HF frame-to-frame jitter in → out (dB/frame)      2.73411 (lower is better)
+        jitter in = 3.51 dB/frame, out = 2.73 dB/frame
+[PASS] Shimmer smoother: 1 kHz tone level change                   -0.00244147 dB
+[PASS] Shimmer smoother: long-term 12 kHz band energy change         -0.717752 dB
+        ring -4.46 dB, neighbouring noise -0.00 dB
+[PASS] Resonance: 3.2 kHz ring reduced by > 3 dB                      -4.46454 dB
+[PASS] Resonance: noise band at 6 kHz changes < 1.0 dB             -0.00469238 dB
+[PASS] Resonance, reduction = 0 → transparent (error dB)            -137.933 dB
+[PASS] Transient 0/0 → unchanged (max abs diff)                            0 
+[PASS] Transient ATTACK +12: first 10 ms of each hit louder by > 3 dB      11.9058 dB
+[PASS] Transient SUSTAIN −12: tail (200–450 ms) quieter by > 4 dB     -9.48286 dB
+[PASS] Transient SUSTAIN −12: onset nearly unchanged               -0.968404 dB
+[PASS] Width 0 % → mono (max |L−R|)                                      0 
+[PASS] 13-stem engine, empty chains, 4 workers: master == Σ stems  1.03144e-07 
+[PASS] PDC: total latency after adding STFT plugin to stem 0              1024 samples
+[PASS] PDC: all 13 stems time-aligned at master (max error)        1.03144e-07 
+[PASS] Loop 1000..5000 (end inside a block): master == ramp through loop (max error)            0 
+[PASS]   ...and the playhead lands where the loop says                    2720 
+[PASS] Loop 1024..3072 (block-aligned): master == ramp through loop (max error)            0 
+[PASS]   ...and the playhead lands where the loop says                    2048 
+[PASS] Loop 3000..3100 (shorter than a block): master == ramp through loop (max error)            0 
+[PASS]   ...and the playhead lands where the loop says                    3020 
+[PASS] Loop: playing from after the loop end plays straight on (max error)            0 
+[PASS] Limiter GR meter holds the +6 dB burst after 1 s of silence (dB)      -7.0706 dB
+[PASS] Limiter: no memory allocation while processing (with GR meter)            0 
+[PASS] Limiter GR meter: reading it resets it (dB, 2nd read)                 0 dB
+[PASS] Limiter GR meter: quiet block after a read shows no reduction (dB) -0.000994078 dB
+[PASS] Limiter GR meter: 0 dBFS burst after reset reads about -1 dB        -1.05 dB
+[PASS] Comp GR meter (UI read) on -6 dBFS peaks, -30 dB / 4:1         -16.8421 dB
+[PASS] Comp: no memory allocation while processing (with GR meter)            0 
+[PASS] TRANSIENT light on during a hit (ATTACK +12, 256-sample blocks)            1 
+[PASS] TRANSIENT light off after 2 s of silence                              0 
+[PASS] Session: clean right after save / open / new                          0 
+[PASS] Session: nothing changed -> still clean                               0 
+[PASS] Session: a fader move -> dirty                                        1 
+[PASS] Session: title shows * while dirty ("*My Song.hcs - APP")             1 
+[PASS] Session: fader moved back -> clean again                              0 
+[PASS] Session: untitled, clean title ("Untitled - APP")                     1 
+[PASS] Close/New/Open when clean: no question, goes on (questions)            0 
+[PASS] Dirty + Yes: saves once, then goes on (saves)                         1 
+[PASS] Dirty + Yes, save failed / Save As cancelled: stays (saves)            1 
+[PASS] Dirty + No: goes on without saving (saves)                            0 
+[PASS] Dirty + Cancel: stays, nothing saved (saves)                          0 
+
+--- Every control moves its own engine (render with the control at min and max, compare) ---
+[PASS] hc.eq6: parameter table matches the engine (declared / real)           19 
+[PASS] hc.eq6: output is finite, nothing blows up                            1 
+[PASS] hc.eq6: process() allocates nothing (allocations)                     0 
+[PASS] hc.eq6: faceplate only points at real parameters                      1 
+[PASS] hc.eq6 / hpf_f: moving it changes the sound (dB vs reference)   0.00650196 dB
+[PASS] hc.eq6 / hpf_g: moving it changes the sound (dB vs reference)         -300 dB (NOT USED, listed on purpose)
+        note: HPF has no gain; slot kept so old sessions load (not on the faceplate)
+[PASS] hc.eq6 / hpf_q: moving it changes the sound (dB vs reference)      -3.3568 dB
+[PASS] hc.eq6 / ls_f: moving it changes the sound (dB vs reference)    -0.435227 dB
+[PASS] hc.eq6 / ls_g: moving it changes the sound (dB vs reference)      2.55805 dB
+[PASS] hc.eq6 / ls_q: moving it changes the sound (dB vs reference)      -1.8085 dB
+[PASS] hc.eq6 / b1_f: moving it changes the sound (dB vs reference)     -8.78728 dB
+[PASS] hc.eq6 / b1_g: moving it changes the sound (dB vs reference)      8.87859 dB
+[PASS] hc.eq6 / b1_q: moving it changes the sound (dB vs reference)     -6.00787 dB
+[PASS] hc.eq6 / b2_f: moving it changes the sound (dB vs reference)     -9.46829 dB
+[PASS] hc.eq6 / b2_g: moving it changes the sound (dB vs reference)      8.06403 dB
+[PASS] hc.eq6 / b2_q: moving it changes the sound (dB vs reference)     -7.60468 dB
+[PASS] hc.eq6 / hs_f: moving it changes the sound (dB vs reference)    -0.109311 dB
+[PASS] hc.eq6 / hs_g: moving it changes the sound (dB vs reference)     -2.12571 dB
+[PASS] hc.eq6 / hs_q: moving it changes the sound (dB vs reference)     -4.23852 dB
+[PASS] hc.eq6 / lpf_f: moving it changes the sound (dB vs reference)      3.77163 dB
+[PASS] hc.eq6 / lpf_g: moving it changes the sound (dB vs reference)         -300 dB (NOT USED, listed on purpose)
+        note: LPF has no gain; slot kept so old sessions load (not on the faceplate)
+[PASS] hc.eq6 / lpf_q: moving it changes the sound (dB vs reference)      2.75125 dB
+[PASS] hc.eq6 / out: moving it changes the sound (dB vs reference)      23.4308 dB
+[PASS] hc.comp: parameter table matches the engine (declared / real)            6 
+[PASS] hc.comp: output is finite, nothing blows up                           1 
+[PASS] hc.comp: process() allocates nothing (allocations)                    0 
+[PASS] hc.comp: faceplate only points at real parameters                     1 
+[PASS] hc.comp / thresh: moving it changes the sound (dB vs reference)      8.52889 dB
+[PASS] hc.comp / ratio: moving it changes the sound (dB vs reference)        8.529 dB
+[PASS] hc.comp / knee: moving it changes the sound (dB vs reference)     -38.1586 dB
+[PASS] hc.comp / attack: moving it changes the sound (dB vs reference)    -0.685222 dB
+[PASS] hc.comp / release: moving it changes the sound (dB vs reference)     -3.03961 dB
+[PASS] hc.comp / makeup: moving it changes the sound (dB vs reference)      23.3871 dB
+[PASS] hc.artifact: parameter table matches the engine (declared / real)            9 
+[PASS] hc.artifact: output is finite, nothing blows up                       1 
+[PASS] hc.artifact: process() allocates nothing (allocations)                0 
+[PASS] hc.artifact: faceplate only points at real parameters                 1 
+[PASS] hc.artifact / shimmer: moving it changes the sound (dB vs reference)      -11.745 dB
+[PASS] hc.artifact / shim_tol: moving it changes the sound (dB vs reference)     -12.7412 dB
+[PASS] hc.artifact / sib: moving it changes the sound (dB vs reference)     -18.1296 dB
+[PASS] hc.artifact / sib_thr: moving it changes the sound (dB vs reference)     -18.1296 dB
+[PASS] hc.artifact / phase: moving it changes the sound (dB vs reference)     -10.9985 dB
+[PASS] hc.artifact / split: moving it changes the sound (dB vs reference)     -14.9216 dB
+[PASS] hc.artifact / floor: moving it changes the sound (dB vs reference)     -8.40934 dB
+[PASS] hc.artifact / res: moving it changes the sound (dB vs reference)      2.61465 dB
+[PASS] hc.artifact / decay: moving it changes the sound (dB vs reference)     -15.6648 dB
+[PASS] hc.limiter: parameter table matches the engine (declared / real)            3 
+[PASS] hc.limiter: output is finite, nothing blows up                        1 
+[PASS] hc.limiter: process() allocates nothing (allocations)                 0 
+[PASS] hc.limiter: faceplate only points at real parameters                  1 
+[PASS] hc.limiter / drive: moving it changes the sound (dB vs reference)     -8.84205 dB
+[PASS] hc.limiter / ceiling: moving it changes the sound (dB vs reference)     -8.28835 dB
+[PASS] hc.limiter / release: moving it changes the sound (dB vs reference)     -13.0606 dB
+[PASS] hc.resonance: parameter table matches the engine (declared / real)            6 
+[PASS] hc.resonance: output is finite, nothing blows up                      1 
+[PASS] hc.resonance: process() allocates nothing (allocations)               0 
+[PASS] hc.resonance: faceplate only points at real parameters                1 
+[PASS] hc.resonance / sens: moving it changes the sound (dB vs reference)     -38.8191 dB
+[PASS] hc.resonance / freq: moving it changes the sound (dB vs reference)     -18.3094 dB
+[PASS] hc.resonance / bw: moving it changes the sound (dB vs reference)     -25.7865 dB
+[PASS] hc.resonance / red: moving it changes the sound (dB vs reference)     -20.1159 dB
+[PASS] hc.resonance / comp: moving it changes the sound (dB vs reference)     -22.3598 dB
+[PASS] hc.resonance / mode: moving it changes the sound (dB vs reference)     -48.7336 dB
+[PASS] hc.transient: parameter table matches the engine (declared / real)            5 
+[PASS] hc.transient: output is finite, nothing blows up                      1 
+[PASS] hc.transient: process() allocates nothing (allocations)               0 
+[PASS] hc.transient: faceplate only points at real parameters                1 
+[PASS] hc.transient / attack: moving it changes the sound (dB vs reference)    -0.122656 dB
+[PASS] hc.transient / sustain: moving it changes the sound (dB vs reference)     -5.06698 dB
+[PASS] hc.transient / speed: moving it changes the sound (dB vs reference)     -15.7778 dB
+[PASS] hc.transient / gain: moving it changes the sound (dB vs reference)       9.4872 dB
+[PASS] hc.transient / mix: moving it changes the sound (dB vs reference)     -2.66172 dB
+[PASS] hc.width: parameter table matches the engine (declared / real)            1 
+[PASS] hc.width: output is finite, nothing blows up                          1 
+[PASS] hc.width: process() allocates nothing (allocations)                   0 
+[PASS] hc.width: faceplate only points at real parameters                    1 
+[PASS] hc.width / width: moving it changes the sound (dB vs reference)     -5.95415 dB
+        controls checked: 49, wired and audible: 47, declared-but-unused: 2
+
+--- Resampler (stems at other sample rates are converted when loaded) ---
+[PASS] 44.1 kHz -> 48 kHz, 1 s: output length (samples)                  48000 
+[PASS] 96 kHz -> 48 kHz, 1 s: output length (samples)                    48000 
+[PASS] 48 kHz -> 48 kHz: samples unchanged                                   1 
+[PASS] 44100 -> 48000 Hz: passband level, worst error (at 18000 Hz) -6.50449e-05 dB
+[PASS] 48000 -> 44100 Hz: passband level, worst error (at 18000 Hz) -6.90268e-05 dB
+[PASS] 96000 -> 48000 Hz: passband level, worst error (at 20000 Hz)  0.000131895 dB
+[PASS] 22050 -> 48000 Hz: passband level, worst error (at 100 Hz)  2.04514e-05 dB
+[PASS] 88200 -> 48000 Hz: passband level, worst error (at 20000 Hz)  0.000108484 dB
+[PASS] 48000 -> 96000 Hz: passband level, worst error (at 20000 Hz)  0.000131637 dB
+[PASS] 44.1 -> 48 kHz: a 1000 Hz sine stays at (Hz)                    1000.23 Hz
+[PASS] 96 -> 48 kHz: 24.5 kHz tone (would fold to 23.5 kHz) removed by     -90.5339 dB
+[PASS] 96 -> 48 kHz: 25.0 kHz tone (would fold to 23.0 kHz) removed by     -100.297 dB
+[PASS] 96 -> 48 kHz: 30.0 kHz tone (would fold to 18.0 kHz) removed by     -106.686 dB
+[PASS] 96 -> 48 kHz: a 20 kHz tone keeps its level (error)         0.000131895 dB
+[PASS] 22.05 -> 48 kHz: everything except the 1 kHz tone (images, noise)      -132.81 dB
+[PASS] 44.1 -> 48 -> 44.1 kHz round trip: error                       -107.473 dB
+[PASS] Stereo file 44.1 -> 48 kHz: both channels keep their level (worst error)  3.16796e-05 dB
+[PASS] Awkward rate pair (44100 -> 47999) is refused with a message            1 
+        message: cannot convert 44100 Hz to 47999 Hz (ratio too awkward)
+[BENCH] 44.1 -> 48 kHz, 30 s mono: 0.140 s  (214x real-time, this machine)
+[BENCH] 13 stems × (EQ+Comp+ArtifactDestroyer) + master (EQ+TP limiter), 3 workers + conductor:
+        10.0 s of audio in 1.030 s  →  9.7x real-time on this 4-core cloud VM
+
+ALL PASSED (0 failures)

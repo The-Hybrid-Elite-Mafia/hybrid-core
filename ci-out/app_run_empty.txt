@@ -1,0 +1,12 @@
+fresh-start app exit code: 0
+screenshot console.png: saved
+screenshot rack.png: saved
+screenshot show.png: saved
+screenshot panel-destroyer.png: saved
+screenshot panel-resonance.png: saved
+screenshot panel-transient.png: saved
+screenshot panel-mastering.png: saved
+screenshot console-laptop-size.png: saved
+screenshots done, 0 failure(s), graphics adapter: Microsoft Basic Render Driver
+audio: No audio output (GetDefaultAudioEndpoint failed (HRESULT 0x80070490))
+stems loaded: 0, session rate 48000 Hz
