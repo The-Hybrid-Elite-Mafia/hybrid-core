@@ -57,3 +57,11 @@ master lands on the target LUFS under the true-peak ceiling.
 - Real audio playback (WASAPI) and the real GPU have not been tested on the build machine (it has no sound device and
   uses a software graphics driver). Test results, screenshots and the install test come from GitHub Actions (branch ci-results-*).
 - Stems at different sample rates are converted when loaded (to the rate of the first stem). Tested: see the resampler section of the test run.
+
+## HEM STEM-TO-MIDI (branch `stem-to-midi`)
+
+A second program built on the same C++23 core: load 1 song or up to 13 stems and get MIDI files for Suno
+(one per stem + one with every stem). Engine: `include/hc/midi/` (every guess in `midi_config.hpp`, marked
+ASSUMED). App: `apps/hem_stem_to_midi/`. Tests: `tests/test_midi.cpp` (built-in test song) and
+`tests/test_midi_real.cpp` (stems made from real recorded samples by `tools/make_real_sample_test.py`).
+Windows build, tests, pictures and the pre-release: `.github/workflows/stem-to-midi.yml`.

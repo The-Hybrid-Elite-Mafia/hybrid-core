@@ -1,0 +1,152 @@
+name: stem-to-midi
+
+# HEM STEM-TO-MIDI on a real Windows machine (MSVC, C++23):
+#   build -> must-work tests -> accuracy tests on stems made from REAL recorded samples ->
+#   MP3 / FLAC decoding through the command-line tool -> the real window app driven by its own
+#   self-test (pictures + result.txt) -> zip -> results to branch ci-results-stem-to-midi ->
+#   pre-release "stem-to-midi-v1.0.0" with the program (only when every must-work step passed).
+
+on:
+  push:
+    branches: [stem-to-midi]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Real test samples (downloaded now, never stored in the repo)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force ci-out | Out-Null
+          python -m pip install --quiet numpy soundfile
+          git clone -q --depth 1 --filter=blob:none --sparse https://github.com/tidalcycles/Dirt-Samples samples/dirt
+          git -C samples/dirt sparse-checkout set gretsch 808 808bd 808sd 808oh
+          git clone -q --depth 1 --filter=blob:none --sparse https://github.com/sfzinstruments/SplendidGrandPiano samples/piano
+          git -C samples/piano sparse-checkout set Data Samples
+          python tools/make_real_sample_test.py realtest samples/dirt samples/piano 2>&1 | Tee-Object -FilePath ci-out\real_samples_made.txt
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Configure (MSVC, C++23)
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G "Visual Studio 17 2022" -A x64 2>&1 | Tee-Object -FilePath ci-out\configure.txt
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake --build build --config Release --parallel --target hem_midi_tests hem_midi_realtest hem_midi_cli HEM-StemToMIDI 2>&1 | Tee-Object -FilePath ci-out\build_log.txt
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $w = (Select-String -Path ci-out\build_log.txt -Pattern 'warning C' | Measure-Object).Count
+          "compiler warnings: $w" | Tee-Object -FilePath ci-out\build_summary.txt
+          Select-String -Path ci-out\configure.txt -Pattern 'CXX compiler identification' | ForEach-Object { $_.Line } | Tee-Object -FilePath ci-out\build_summary.txt -Append
+
+      - name: Must-work tests + accuracy on the built-in test song
+        shell: pwsh
+        run: |
+          & build\Release\hem_midi_tests.exe 2>&1 | Tee-Object -FilePath ci-out\midi_tests.txt
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Accuracy on stems made from real recorded samples
+        shell: pwsh
+        run: |
+          & build\Release\hem_midi_realtest.exe realtest 2>&1 | Tee-Object -FilePath ci-out\midi_realtest.txt
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: MP3 and FLAC files (Windows Media Foundation) through the command-line tool
+        shell: pwsh
+        run: |
+          if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) { choco install ffmpeg -y --no-progress | Out-Null; refreshenv | Out-Null; $env:Path += ";C:\ProgramData\chocolatey\bin" }
+          python -c "import soundfile as sf, numpy as np; a=[sf.read('realtest/'+n+'.wav')[0] for n in ['real_drums_kit','real_piano_chords','real_piano_melody']]; L=min(len(x) for x in a); sf.write('realtest/My Song.wav', 0.5*sum(x[:L] for x in a), 44100, subtype='PCM_16')"
+          ffmpeg -loglevel error -y -i "realtest/My Song.wav" -b:a 192k "realtest/My Song.mp3"
+          ffmpeg -loglevel error -y -i "realtest/real_piano_melody.wav" -b:a 192k "realtest/Lead Piano.mp3"
+          ffmpeg -loglevel error -y -i "realtest/real_drums_808.wav" "realtest/Drums 808.flac"
+          $log = 'ci-out\midi_cli_formats.txt'
+          "== one full song as MP3 (Auto -> Full song)" | Tee-Object -FilePath $log
+          & build\Release\hem_midi_cli.exe cli-out\mp3 "realtest\My Song.mp3" 2>&1 | Tee-Object -FilePath $log -Append
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          "== stems: MP3 lead + FLAC drums + WAV piano, quantize 1/16" | Tee-Object -FilePath $log -Append
+          & build\Release\hem_midi_cli.exe --quantize 16 --type 1=Lead cli-out\mixed "realtest\Lead Piano.mp3" "realtest\Drums 808.flac" "realtest\real_piano_chords.wav" 2>&1 | Tee-Object -FilePath $log -Append
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          "== same lead as WAV (compare note count with the MP3 above)" | Tee-Object -FilePath $log -Append
+          & build\Release\hem_midi_cli.exe --type 1=Lead cli-out\wav "realtest\real_piano_melody.wav" 2>&1 | Tee-Object -FilePath $log -Append
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Run the real window app (self-test drives its controls, takes pictures)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force shots | Out-Null
+          $files = @('real_drums_kit','real_drums_808','real_piano_chords','real_piano_melody') | ForEach-Object { '"' + (Resolve-Path "realtest\$_.wav").Path + '"' }
+          $argv = @('--selftest', ('"' + (Resolve-Path shots).Path + '"')) + $files
+          $p = Start-Process -FilePath build\Release\HEM-StemToMIDI.exe -ArgumentList $argv -Wait -PassThru
+          "app exit code: $($p.ExitCode)" | Tee-Object -FilePath ci-out\app_selftest.txt
+          if (Test-Path shots\result.txt) { Get-Content shots\result.txt | Tee-Object -FilePath ci-out\app_selftest.txt -Append }
+          if ($p.ExitCode -ne 0) { exit 1 }
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist-midi\pkg | Out-Null
+          Copy-Item build\Release\HEM-StemToMIDI.exe dist-midi\pkg\
+          Copy-Item build\Release\hem_midi_cli.exe dist-midi\pkg\
+          Copy-Item apps\hem_stem_to_midi\README-STEM-TO-MIDI.txt dist-midi\pkg\
+          Copy-Item LICENSE dist-midi\pkg\LICENSE.txt
+          Compress-Archive -Path dist-midi\pkg\* -DestinationPath dist-midi\HEM-StemToMIDI-1.0.0-win64.zip -Force
+          Copy-Item build\Release\HEM-StemToMIDI.exe dist-midi\HEM-StemToMIDI-1.0.0.exe
+          Get-ChildItem dist-midi | ForEach-Object { "$($_.Name): $($_.Length) bytes" } | Tee-Object -FilePath ci-out\package.txt
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hem-stem-to-midi-windows
+          path: |
+            dist-midi/*.zip
+            dist-midi/*.exe
+            ci-out/
+            shots/
+
+      - name: Publish results to branch ci-results-stem-to-midi
+        if: always()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          $dest = "ci-results-$env:GITHUB_REF_NAME"
+          $tmp = Join-Path $env:RUNNER_TEMP 'results'
+          New-Item -ItemType Directory -Force $tmp | Out-Null
+          foreach ($d in 'ci-out','shots') { if (Test-Path $d) { Copy-Item $d (Join-Path $tmp $d) -Recurse -Force } }
+          if (Test-Path cli-out) { Get-ChildItem cli-out -Recurse -Filter *.mid | ForEach-Object { $rel = $_.FullName.Substring((Resolve-Path cli-out).Path.Length + 1); $t = Join-Path $tmp "midi-made-on-windows\$rel"; New-Item -ItemType Directory -Force (Split-Path $t) | Out-Null; Copy-Item $_.FullName $t } }
+          "commit: $env:GITHUB_SHA`nrun: $env:GITHUB_RUN_ID`njob status: $env:JOB_STATUS" | Out-File (Join-Path $tmp 'README.txt')
+          Push-Location $tmp
+          git init -q -b results
+          git config user.name 'hybrid-core-ci'
+          git config user.email 'ci@users.noreply.github.com'
+          git add -A
+          git commit -q -m "stem-to-midi CI results for $env:GITHUB_SHA"
+          git push -q --force "https://x-access-token:$env:GH_TOKEN@github.com/$env:GITHUB_REPOSITORY.git" "results:refs/heads/$dest"
+          Pop-Location
+
+      - name: Publish the program as a pre-release
+        if: github.ref == 'refs/heads/stem-to-midi' && success()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = 'stem-to-midi-v1.0.0'
+          $notes = Get-Content apps\hem_stem_to_midi\RELEASE-NOTES.md -Raw
+          $notes += "`n`nBuilt and tested on GitHub's Windows machine from commit $env:GITHUB_SHA. Full test output: branch ci-results-stem-to-midi."
+          $notes | Out-File -Encoding utf8 notes.md
+          gh release delete $tag --yes --cleanup-tag 2>$null
+          gh release create $tag dist-midi\HEM-StemToMIDI-1.0.0.exe dist-midi\HEM-StemToMIDI-1.0.0-win64.zip --title "HEM STEM-TO-MIDI 1.0.0 (Windows)" --notes-file notes.md --prerelease --target $env:GITHUB_SHA

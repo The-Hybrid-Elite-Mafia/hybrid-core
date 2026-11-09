@@ -66,3 +66,34 @@ if(WIN32)
   # Installer: embeds the built HybridCore.exe (setup.rc points at ../build-win/HybridCore.exe;
   # build_windows.sh produces dist/HybridCore-Setup.exe the same way).
 endif()
+
+# =============================================================================
+#  HEM STEM-TO-MIDI — 1 song or up to 13 stems -> MIDI (engine: include/hc/midi, app: apps/hem_stem_to_midi)
+# =============================================================================
+add_executable(hem_midi_tests tests/test_midi.cpp)
+target_link_libraries(hem_midi_tests PRIVATE hybrid_core)
+add_executable(hem_midi_realtest tests/test_midi_real.cpp)
+target_include_directories(hem_midi_realtest PRIVATE tests)
+target_link_libraries(hem_midi_realtest PRIVATE hybrid_core)
+
+set(HEM_MIDI_LOADER apps/hem_stem_to_midi/audio_load.hpp)
+if(WIN32)
+  list(APPEND HEM_MIDI_LOADER apps/hem_stem_to_midi/decode_mf.cpp)
+endif()
+add_executable(hem_midi_cli apps/hem_stem_to_midi/cli.cpp ${HEM_MIDI_LOADER})
+target_include_directories(hem_midi_cli PRIVATE apps/hem_stem_to_midi)
+target_link_libraries(hem_midi_cli PRIVATE hybrid_core)
+if(WIN32)
+  target_link_libraries(hem_midi_cli PRIVATE mfplat mfreadwrite mfuuid ole32 uuid shell32)
+  set_source_files_properties(apps/hem_stem_to_midi/decode_mf.cpp PROPERTIES COMPILE_DEFINITIONS "UNICODE;_UNICODE")
+
+  add_executable(HEM-StemToMIDI WIN32 apps/hem_stem_to_midi/main.cpp apps/hem_stem_to_midi/decode_mf.cpp apps/hem_stem_to_midi/app.rc)
+  target_include_directories(HEM-StemToMIDI PRIVATE apps/hem_stem_to_midi)
+  target_compile_definitions(HEM-StemToMIDI PRIVATE UNICODE _UNICODE)
+  target_link_libraries(HEM-StemToMIDI PRIVATE hybrid_core mfplat mfreadwrite mfuuid ole32 uuid comctl32 comdlg32 shell32 windowscodecs gdi32 user32)
+  if(MSVC)
+    target_link_options(HEM-StemToMIDI PRIVATE /ENTRY:wWinMainCRTStartup /MANIFEST:NO)
+  else()
+    target_link_options(HEM-StemToMIDI PRIVATE -municode)
+  endif()
+endif()
