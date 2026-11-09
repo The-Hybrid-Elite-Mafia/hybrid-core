@@ -1,0 +1,2 @@
+compiler warnings: 0
+-- The CXX compiler identification is MSVC 19.44.35229.0

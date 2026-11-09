@@ -1,0 +1,19 @@
+HEM STEM-TO-MIDI on stems made from real recorded samples. Limits are ASSUMED until approved.
+[FAIL] real_drums_kit (Drums): F-measure >= 0.95                               0.907
+       78 right of 86 in the answer key, 86 found (precision 0.91, recall 0.91)
+         drum 36: 20 of 20 right, 20 found
+         drum 38: 16 of 18 right, 16 found
+         drum 42: 38 of 44 right, 41 found
+         drum 46: 4 of 4 right, 9 found
+[PASS] real_drums_808 (Drums): F-measure >= 0.95                              0.9864
+       109 right of 112 in the answer key, 109 found (precision 1.00, recall 0.97)
+         drum 36: 24 of 24 right, 24 found
+         drum 38: 16 of 16 right, 16 found
+         drum 42: 65 of 68 right, 65 found
+         drum 46: 4 of 4 right, 4 found
+[FAIL] real_piano_chords (Chords): F-measure >= 0.85                          0.7639
+       55 right of 74 in the answer key, 70 found (precision 0.79, recall 0.74)
+[PASS] real_piano_melody (Lead): F-measure >= 0.95                                 1
+       19 right of 19 in the answer key, 19 found (precision 1.00, recall 1.00)
+
+ACCURACY BARS ON REAL SAMPLES: 2 of 4 met, 2 missed (bars are ASSUMED, see midi_config.hpp)

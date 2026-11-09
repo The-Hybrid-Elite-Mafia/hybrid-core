@@ -1,0 +1,58 @@
+== one full song as MP3 (Auto -> Full song)
+loaded My Song                        14.30 s   44100 Hz  (0.63 s to open)
+tempo 96.00 BPM (found), beat 1 at 0.333 s, quantize off, sensitivity 50, shortest note 60 ms
+  My Song                      Full song    221 notes  My Song - My Song.mid
+  combined: My Song - ALL STEMS.mid
+  read-back PASS ALL STEMS: type-1 MIDI file, 480 ticks per beat
+  read-back PASS ALL STEMS: 2 track(s)
+  read-back PASS ALL STEMS: tempo in file 96.000 BPM
+  read-back PASS ALL STEMS: 221 notes read back, 221 written
+  read-back PASS My Song: type-1 MIDI file, 480 ticks per beat
+  read-back PASS My Song: 2 track(s)
+  read-back PASS My Song: tempo in file 96.000 BPM
+  read-back PASS My Song: 221 notes read back, 221 written
+converted in 0.31 s
+== stems: MP3 lead + FLAC drums + WAV piano, quantize 1/16
+loaded Lead Piano                     14.30 s   44100 Hz  (0.04 s to open)
+loaded Drums 808                      16.71 s   44100 Hz  (0.13 s to open)
+loaded real_piano_chords              23.00 s   44100 Hz  (0.02 s to open)
+tempo 140.00 BPM (found), beat 1 at 0.293 s, quantize 1/16, sensitivity 50, shortest note 60 ms
+  Lead Piano                   Lead          19 notes  realtest - Lead Piano.mid
+  Drums 808                    Drums        109 notes  realtest - Drums 808.mid
+  real_piano_chords            Chords        70 notes  realtest - real_piano_chords.mid
+  combined: realtest - ALL STEMS.mid
+  read-back PASS ALL STEMS: type-1 MIDI file, 480 ticks per beat
+  read-back PASS ALL STEMS: 3 track(s)
+  read-back PASS ALL STEMS: tempo in file 140.00 BPM
+  read-back PASS ALL STEMS: 198 notes read back, 198 written
+  read-back PASS ALL STEMS: every note starts on the 1/16 grid
+  read-back PASS Lead Piano: type-1 MIDI file, 480 ticks per beat
+  read-back PASS Lead Piano: 1 track(s)
+  read-back PASS Lead Piano: tempo in file 140.00 BPM
+  read-back PASS Lead Piano: 19 notes read back, 19 written
+  read-back PASS Lead Piano: every note starts on the 1/16 grid
+  read-back PASS Drums 808: type-1 MIDI file, 480 ticks per beat
+  read-back PASS Drums 808: 1 track(s)
+  read-back PASS Drums 808: tempo in file 140.00 BPM
+  read-back PASS Drums 808: 109 notes read back, 109 written
+  read-back PASS Drums 808: every note starts on the 1/16 grid
+  read-back PASS real_piano_chords: type-1 MIDI file, 480 ticks per beat
+  read-back PASS real_piano_chords: 1 track(s)
+  read-back PASS real_piano_chords: tempo in file 140.00 BPM
+  read-back PASS real_piano_chords: 70 notes read back, 70 written
+  read-back PASS real_piano_chords: every note starts on the 1/16 grid
+converted in 0.48 s
+== same lead as WAV (compare note count with the MP3 above)
+loaded real_piano_melody              14.25 s   44100 Hz  (0.01 s to open)
+tempo 96.00 BPM (found), beat 1 at 0.293 s, quantize off, sensitivity 50, shortest note 60 ms
+  real_piano_melody            Lead          19 notes  real_piano_melody - real_piano_melody.mid
+  combined: real_piano_melody - ALL STEMS.mid
+  read-back PASS ALL STEMS: type-1 MIDI file, 480 ticks per beat
+  read-back PASS ALL STEMS: 1 track(s)
+  read-back PASS ALL STEMS: tempo in file 96.000 BPM
+  read-back PASS ALL STEMS: 19 notes read back, 19 written
+  read-back PASS real_piano_melody: type-1 MIDI file, 480 ticks per beat
+  read-back PASS real_piano_melody: 1 track(s)
+  read-back PASS real_piano_melody: tempo in file 96.000 BPM
+  read-back PASS real_piano_melody: 19 notes read back, 19 written
+converted in 0.16 s

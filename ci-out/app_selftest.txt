@@ -1,0 +1,19 @@
+app exit code: 0
+PASS loaded 4 of 4 files
+PASS picture 1_loaded.png saved
+PASS CONVERT button started the job
+PASS first conversion finished
+PASS first conversion: every file read back correctly (25 checks)
+PASS controls -> settings: quantize 1/16, BPM auto, sensitivity 50, shortest 60 ms
+PASS Quantize 1/16 in the window -> every note in the file on the 1/16 grid
+PASS file tempo = found tempo (96.000000)
+PASS row 1 shows its result: Drums: 86 notes
+PASS picture 2_converted.png saved
+PASS second conversion finished, every file read back correctly
+PASS controls -> settings: BPM 100, quantize off, sensitivity 100, shortest 20 ms
+PASS typed BPM 100 -> tempo in file 100.000000
+PASS row 1 type = Skip -> one track fewer (4 -> 3)
+PASS sensitivity 50 -> 100 and shortest 60 -> 20 ms: more notes on the other rows (194 -> 323)
+PASS Quantize Off -> notes keep their own timing
+PASS picture 3_second_run.png saved
+ALL PASSED (0 failure(s))

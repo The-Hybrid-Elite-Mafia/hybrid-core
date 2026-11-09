@@ -1,0 +1,4 @@
+real_drums_kit: 86 notes, 22.0 s
+real_drums_808: 112 notes, 16.7 s
+real_piano_chords: 74 notes, 23.0 s
+real_piano_melody: 19 notes, 14.2 s

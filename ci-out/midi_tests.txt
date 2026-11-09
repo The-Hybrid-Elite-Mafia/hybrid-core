@@ -1,0 +1,109 @@
+HEM STEM-TO-MIDI tests (C++23). Limits are ASSUMED until approved.
+
+== MIDI file writer / reader
+[PASS] file reads back as type-1 MIDI                                              1 
+[PASS] tempo track + 2 tracks                                                      3 
+[PASS] tempo reads back exactly                                                  120 BPM
+[PASS] time signature 4/4                                                          4 
+[PASS] track name and instrument read back                                        33 
+[PASS] 0.5 s at 120 BPM = 480 ticks, note-offs exact                             480 ticks
+[PASS] drums on channel 10, no program change                                      2 
+[PASS] 1/16 quantize: starts and ends on the 120-tick grid                       240 ticks
+[PASS] quantize grid follows beat 1 (offset 48 ticks)                            288 ticks
+
+== One sine note, A4 440 Hz, 0.2 s .. 0.7 s
+[PASS] exactly one note                                                            1 notes
+[PASS] pitch = 69 (A4)                                                            69 
+[PASS] start within 20 ms                                                     -8.188 ms
+[PASS] length within 40 ms                                                     23.13 ms
+
+== Silence and quiet noise make no notes
+[PASS] one-note finder: silence -> 0 notes                                         0 
+[PASS] chord finder: silence -> 0 notes                                            0 
+[PASS] drum finder: silence -> 0 notes                                             0 
+[PASS] noise at -70 dBFS -> 0 notes (all three)                                    0 notes
+
+== Test song parts at 44100 Hz, 120 BPM, 8 bars
+[PASS] (accuracy) bass (eighths, repeated notes): F-measure >= 0.95                1
+       bass: 64 right of 64 in the answer key, 64 found
+[PASS] (accuracy) vocal (vibrato +-30 cents): F-measure >= 0.95                    1
+       vocal: 28 right of 28 in the answer key, 28 found
+[PASS] (accuracy) keys (4-note chords, repeated): F-measure >= 0.85                1
+       keys: 64 right of 64 in the answer key, 64 found
+[FAIL] (accuracy) drums (kick/snare/closed+open hat): F-measure >= 0.95       0.8131
+       drums: 87 right of 88 in the answer key, 126 found
+[INFO] bass: worst start error of matched notes                                9.187 ms
+
+== Test song parts at 48000 Hz, 120 BPM, 8 bars
+[PASS] (accuracy) bass (eighths, repeated notes): F-measure >= 0.95                1
+       bass: 64 right of 64 in the answer key, 64 found
+[PASS] (accuracy) vocal (vibrato +-30 cents): F-measure >= 0.95                    1
+       vocal: 28 right of 28 in the answer key, 28 found
+[PASS] (accuracy) keys (4-note chords, repeated): F-measure >= 0.85                1
+       keys: 64 right of 64 in the answer key, 64 found
+[FAIL] (accuracy) drums (kick/snare/closed+open hat): F-measure >= 0.95       0.7727
+       drums: 85 right of 88 in the answer key, 132 found
+[INFO] bass: worst start error of matched notes                                9.187 ms
+
+== Tempo
+[PASS] drums+bass at 120 BPM found within 1.0 BPM                                120 BPM
+[INFO]    beat-1 position error (song starts at 0.25 s), modulo one beat         9.3 ms
+[PASS] drums+bass at 93 BPM found within 1.0 BPM                                  93 BPM
+[INFO]    beat-1 position error (song starts at 0.25 s), modulo one beat        12.2 ms
+[PASS] drums+bass at 140 BPM found within 1.0 BPM                                140 BPM
+[INFO]    beat-1 position error (song starts at 0.25 s), modulo one beat         6.4 ms
+[PASS] drums+bass at 76 BPM found within 1.0 BPM                                  76 BPM
+[INFO]    beat-1 position error (song starts at 0.25 s), modulo one beat        12.2 ms
+
+== Controls change the result (wiring)
+[PASS] Sensitivity 0 keeps 2 loud notes, 100 keeps all 4                          42 (hi*10+lo)
+[PASS] Shortest note 20 ms keeps five 40 ms notes, 100 ms drops them              50 (keep*10+drop)
+[PASS] drum finder: Sensitivity 100 finds more hits than 0                        37 more hits
+[PASS] chord finder: Sensitivity 100 finds more notes than 0                      19 more notes
+
+== Whole job: 4 stems in, MIDI files out, read back
+[PASS] convert() finished without an error                                         0 
+[PASS] Auto picked Drums / Bass / Vocal / Chords from the names                    4 
+[PASS] tempo found from all stems                                                120 BPM
+       read-back PASS ALL STEMS: type-1 MIDI file, 480 ticks per beat
+       read-back PASS ALL STEMS: 4 track(s)
+       read-back PASS ALL STEMS: tempo in file 120.00 BPM
+       read-back PASS ALL STEMS: 285 notes read back, 285 written
+       read-back PASS Drums: type-1 MIDI file, 480 ticks per beat
+       read-back PASS Drums: 1 track(s)
+       read-back PASS Drums: tempo in file 120.00 BPM
+       read-back PASS Drums: 129 notes read back, 129 written
+       read-back PASS Bass: type-1 MIDI file, 480 ticks per beat
+       read-back PASS Bass: 1 track(s)
+       read-back PASS Bass: tempo in file 120.00 BPM
+       read-back PASS Bass: 64 notes read back, 64 written
+       read-back PASS Vocals: type-1 MIDI file, 480 ticks per beat
+       read-back PASS Vocals: 1 track(s)
+       read-back PASS Vocals: tempo in file 120.00 BPM
+       read-back PASS Vocals: 28 notes read back, 28 written
+       read-back PASS Keyboard: type-1 MIDI file, 480 ticks per beat
+       read-back PASS Keyboard: 1 track(s)
+       read-back PASS Keyboard: tempo in file 120.00 BPM
+       read-back PASS Keyboard: 64 notes read back, 64 written
+[PASS] every written file read back correctly                                     20 checks
+[INFO] time to convert 4 stems x 17 s (this machine)                          0.5058 s
+       Drums: 84 right of 88 in the answer key, 129 found
+       Bass: 64 right of 64 in the answer key, 64 found
+       Vocals: 28 right of 28 in the answer key, 28 found
+       Keyboard: 64 right of 64 in the answer key, 64 found
+[PASS] (accuracy) all 4 stems from the MIDI file: F-measure >= 0.80           0.9074
+[PASS] typed BPM 100 is the tempo in the file                                    100 BPM
+[PASS] Quantize 1/16: every note on the grid                                      64 notes
+[PASS] Quantize Off: notes keep their own timing (not all on grid)                 0 
+[PASS] Type menu: bass audio set to Drums goes to channel 10                     155 hits
+[PASS] Type menu: Skip leaves the stem out                                         1 tracks
+[PASS] 13 stems -> one file with 13 tracks + 13 single files, all read back         13 tracks
+[PASS] 14 .mid files written (13 stems + ALL STEMS)                               14 
+[PASS] single file with a plain name -> Full song (notes + drums tracks)           2 tracks
+[INFO] full song in ONE file, notes track F-measure (no pass bar: expected messy)     0.6509 
+       full-song notes: 124 right of 156 in the answer key, 225 found
+[INFO] full song in ONE file, drums track F-measure (no pass bar)             0.5178 
+       full-song drums: 80 right of 88 in the answer key, 221 found
+
+MUST-WORK CHECKS: ALL PASSED (0 failures)
+ACCURACY BARS: 7 of 9 met, 2 missed (bars are ASSUMED, see midi_config.hpp)

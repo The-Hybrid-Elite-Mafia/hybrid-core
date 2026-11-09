@@ -1,0 +1,23 @@
+MSBuild version 17.14.60+43b635718 for .NET Framework
+
+  1>Checking Build System
+  Building Custom Rule D:/a/hybrid-core/hybrid-core/CMakeLists.txt
+  test_midi.cpp
+  hem_midi_tests.vcxproj -> D:\a\hybrid-core\hybrid-core\build\Release\hem_midi_tests.exe
+MSBuild version 17.14.60+43b635718 for .NET Framework
+
+  Building Custom Rule D:/a/hybrid-core/hybrid-core/CMakeLists.txt
+  test_midi_real.cpp
+  hem_midi_realtest.vcxproj -> D:\a\hybrid-core\hybrid-core\build\Release\hem_midi_realtest.exe
+MSBuild version 17.14.60+43b635718 for .NET Framework
+
+  Building Custom Rule D:/a/hybrid-core/hybrid-core/CMakeLists.txt
+  cli.cpp
+  decode_mf.cpp
+  hem_midi_cli.vcxproj -> D:\a\hybrid-core\hybrid-core\build\Release\hem_midi_cli.exe
+MSBuild version 17.14.60+43b635718 for .NET Framework
+
+  Building Custom Rule D:/a/hybrid-core/hybrid-core/CMakeLists.txt
+  main.cpp
+  decode_mf.cpp
+  HEM-StemToMIDI.vcxproj -> D:\a\hybrid-core\hybrid-core\build\Release\HEM-StemToMIDI.exe
