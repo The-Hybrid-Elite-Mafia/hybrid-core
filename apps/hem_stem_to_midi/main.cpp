@@ -25,6 +25,7 @@
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <wincodec.h>
+#include <uxtheme.h>
 #include "audio_load.hpp"
 #include "hc/midi/transcriber.hpp"
 #include <algorithm>
@@ -91,7 +92,7 @@ struct App {
     std::string progWhat;
     // self-test
     bool selftest = false; fs::path selfOut; std::vector<fs::path> selfFiles; int selfStep = 0; std::vector<std::string> selfLog; int selfFail = 0;
-    ConvertResult selfR1;
+    ConvertResult selfR1; std::size_t selfTracks1 = 0;
 } g;
 
 int S(int v) { return int(v * g.scale + 0.5); }
@@ -329,6 +330,7 @@ void selfTestStep() {
         selfLog(R.allChecksPassed, "first conversion: every file read back correctly (" + std::to_string(R.checks.size()) + " checks)");
         selfLog(g.lastSettings.quantizeDiv == 16 && g.lastSettings.bpm == 0 && g.lastSettings.sensitivity == 50 && g.lastSettings.shortestMs == 60, "controls -> settings: quantize 1/16, BPM auto, sensitivity 50, shortest 60 ms");
         const auto P = parseFile(R.combinedFile);
+        g.selfTracks1 = P.tracks.size();   // the 2nd run writes the same file names, so count now
         bool grid = P.tracks.size() > 1; const std::int64_t off = secondsToTicks(R.beatOffsetSec, R.bpm);
         for (std::size_t t = 1; t < P.tracks.size(); ++t) for (auto& n : P.tracks[t].notes) grid = grid && ((n.on - off) % 120 + 120) % 120 == 0;
         selfLog(grid, "Quantize 1/16 in the window -> every note in the file on the 1/16 grid");
@@ -349,9 +351,9 @@ void selfTestStep() {
         const auto& R = g.last; const auto& R1 = g.selfR1;
         selfLog(R.error.empty() && R.allChecksPassed, "second conversion finished, every file read back correctly");
         selfLog(g.lastSettings.quantizeDiv == 0 && g.lastSettings.bpm == 100 && g.lastSettings.sensitivity == 100 && g.lastSettings.shortestMs == 20, "controls -> settings: BPM 100, quantize off, sensitivity 100, shortest 20 ms");
-        const auto P = parseFile(R.combinedFile), P1 = parseFile(R1.combinedFile);
+        const auto P = parseFile(R.combinedFile);
         selfLog(std::fabs(P.bpm - 100.0) < 0.01, "typed BPM 100 -> tempo in file " + std::to_string(P.bpm));
-        selfLog(!R.stems.empty() && R.stems[0].mode == Mode::Skip && P.tracks.size() + 1 == P1.tracks.size(), "row 1 type = Skip -> one track fewer (" + std::to_string(P1.tracks.size() - 1) + " -> " + std::to_string(P.tracks.size() - 1) + ")");
+        selfLog(!R.stems.empty() && R.stems[0].mode == Mode::Skip && P.tracks.size() + 1 == g.selfTracks1, "row 1 type = Skip -> one track fewer (" + std::to_string(g.selfTracks1 - 1) + " -> " + std::to_string(P.tracks.size() - 1) + ")");
         std::size_t n1 = 0, n2 = 0;
         for (std::size_t i = 1; i < R.stems.size() && i < R1.stems.size(); ++i) { n1 += R1.stems[i].notes; n2 += R.stems[i].notes; }
         selfLog(n2 > n1, "sensitivity 50 -> 100 and shortest 60 -> 20 ms: more notes on the other rows (" + std::to_string(n1) + " -> " + std::to_string(n2) + ")");
@@ -415,7 +417,12 @@ void createControls() {
     SendMessageW(g.progress, PBM_SETBARCOLOR, 0, kLime); SendMessageW(g.progress, PBM_SETBKCOLOR, 0, kField);
     g.btnOpen = mk(L"BUTTON", L"OPEN FOLDER", BS_OWNERDRAW, L + 770, sy + 124, 120, 44, ID_OPEN_FOLDER, g.fontBold);
     EnableWindow(g.btnOpen, FALSE);
-    g.status = mk(L"STATIC", L"Load 1 song or up to 13 stems. You can also drag files or a folder onto this window.", SS_LEFT | SS_NOPREFIX | SS_ENDELLIPSIS, L + 272, sy + 146, 488, 40, ID_STATUS, g.fontSmall);
+    g.status = mk(L"STATIC", L"Load 1 song or up to 13 stems. You can also drag files or a folder onto this window.", SS_LEFT | SS_NOPREFIX, L + 272, sy + 146, 488, 44, ID_STATUS, g.fontSmall);
+    // dark drop-down menus (Windows 10 1809+ dark theme; older Windows keeps the light look) and a lime progress bar
+    for (HWND c : g.rowType) SetWindowTheme(c, L"DarkMode_CFD", nullptr);
+    SetWindowTheme(g.quant, L"DarkMode_CFD", nullptr);
+    SetWindowTheme(g.progress, L"", L"");
+    SendMessageW(g.progress, PBM_SETBARCOLOR, 0, kLime); SendMessageW(g.progress, PBM_SETBKCOLOR, 0, kField);
 }
 
 void drawButton(const DRAWITEMSTRUCT* d) {
@@ -482,6 +489,7 @@ LRESULT CALLBACK proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         const int id = GetDlgCtrlID(c);
         SetBkMode(dc, TRANSPARENT);
         if (id == ID_STATUS) SetTextColor(dc, GetPropW(c, L"bad") ? kRed : kText);
+        else if (id == ID_OUT_PATH) SetTextColor(dc, kText);
         else if (id == ID_SENS_VAL || id == ID_SHORT_VAL) SetTextColor(dc, kLime);
         else if (id >= ID_ROW_RESULT && id < ID_ROW_RESULT + int(kMaxStems)) { wchar_t t[16]; GetWindowTextW(c, t, 16); SetTextColor(dc, wcsncmp(t, L"ERROR", 5) == 0 ? kRed : kLime); }
         else if (id >= ID_ROW_NAME && id < ID_ROW_NAME + int(kMaxStems)) SetTextColor(dc, (id - ID_ROW_NAME) < int(g.files.size()) ? kText : RGB(0x40, 0x44, 0x4C));
@@ -490,7 +498,7 @@ LRESULT CALLBACK proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (id >= ID_ROW_NAME && id < ID_ROW_REMOVE) { const int row = (id % 100); SetBkColor(dc, row % 2 ? kRowAlt : kPanel); return LRESULT(row % 2 ? g.altBrush : g.panelBrush); }
         SetBkColor(dc, kBg); return LRESULT(g.bgBrush);
     }
-    case WM_CTLCOLOREDIT: case WM_CTLCOLORLISTBOX: SetTextColor(HDC(w), kText); SetBkColor(HDC(w), kField); return LRESULT(g.fieldBrush);
+    case WM_CTLCOLOREDIT: case WM_CTLCOLORLISTBOX: case WM_CTLCOLORBTN: SetTextColor(HDC(w), kText); SetBkColor(HDC(w), kField); return LRESULT(g.fieldBrush);
     case WM_HSCROLL:
         if (HWND(l) == g.sens) { wchar_t t[16]; swprintf(t, 16, L"%d", int(SendMessageW(g.sens, TBM_GETPOS, 0, 0))); SetWindowTextW(g.sensVal, t); }
         if (HWND(l) == g.shortest) { wchar_t t[16]; swprintf(t, 16, L"%d ms", int(SendMessageW(g.shortest, TBM_GETPOS, 0, 0))); SetWindowTextW(g.shortVal, t); }

@@ -453,7 +453,7 @@ inline std::vector<Note> polyTranscribe(const std::vector<float>& x, double sr, 
         }
     }
     // the same pitch can't overlap itself: join near-duplicates, otherwise end the first at the second
-    std::sort(notes.begin(), notes.end(), [](const Note& x, const Note& y) { return x.pitch < y.pitch || (x.pitch == y.pitch && x.start < y.start); });
+    std::sort(notes.begin(), notes.end(), [](const Note& a1, const Note& a2) { return a1.pitch < a2.pitch || (a1.pitch == a2.pitch && a1.start < a2.start); });
     std::vector<Note> clean;
     for (const auto& n : notes) {
         if (!clean.empty() && clean.back().pitch == n.pitch && n.start < clean.back().end) {
@@ -462,7 +462,7 @@ inline std::vector<Note> polyTranscribe(const std::vector<float>& x, double sr, 
         }
         clean.push_back(n);
     }
-    std::sort(clean.begin(), clean.end(), [](const Note& x, const Note& y) { return x.start < y.start || (x.start == y.start && x.pitch < y.pitch); });
+    std::sort(clean.begin(), clean.end(), [](const Note& a1, const Note& a2) { return a1.start < a2.start || (a1.start == a2.start && a1.pitch < a2.pitch); });
     return clean;
 }
 
@@ -587,34 +587,34 @@ inline std::vector<Note> drumTranscribe(const std::vector<float>& x, double sr, 
     // bleed: a weak hit of one drum at the same moment as a much stronger hit of another drum is that
     // other drum leaking into this part (a snare's body showing up as a soft kick, etc.)
     const std::size_t same = std::max<std::size_t>(1, std::size_t(std::lround(0.020 / tHop)));
-    for (auto& x : hits) for (const auto& y : hits)
-        if (y.d != x.d && (x.d == 1 || y.d == 1)   // kick and hat share almost no frequencies, so only pairs with the snare can bleed
-            && (x.t > y.t ? x.t - y.t : y.t - x.t) <= same && x.rel < -kDrumBleedDb && y.rel - x.rel > kDrumBleedDb) x.keep = false;
+    for (auto& hx : hits) for (const auto& y : hits)
+        if (y.d != hx.d && (hx.d == 1 || y.d == 1)   // kick and hat share almost no frequencies, so only pairs with the snare can bleed
+            && (hx.t > y.t ? hx.t - y.t : y.t - hx.t) <= same && hx.rel < -kDrumBleedDb && y.rel - hx.rel > kDrumBleedDb) hx.keep = false;
     // ringing: a real hit jumps up from a clearly lower level. A wobble in a drum that is still
     // ringing (an open hat's shimmer, an 808 tail) only nudges the curve, so it is not a new hit.
-    for (auto& x : hits) {
-        const double* h = H.data() + std::size_t(x.d) * T;
+    for (auto& hx : hits) {
+        const double* h = H.data() + std::size_t(hx.d) * T;
         double before = std::numeric_limits<double>::max();
-        for (std::size_t j = (x.t > 3 ? x.t - 3 : 0); j < x.t; ++j) before = std::min(before, h[j]);
-        if (x.t == 0) before = 0;
-        if (x.lvl - before < kDrumAttackShare * x.lvl) x.keep = false;
+        for (std::size_t j = (hx.t > 3 ? hx.t - 3 : 0); j < hx.t; ++j) before = std::min(before, h[j]);
+        if (hx.t == 0) before = 0;
+        if (hx.lvl - before < kDrumAttackShare * hx.lvl) hx.keep = false;
     }
     std::vector<Note> notes;
-    std::vector<std::size_t> hatTimes; for (const auto& x : hits) if (x.keep && x.d == 2) hatTimes.push_back(x.t);
+    std::vector<std::size_t> hatTimes; for (const auto& hx : hits) if (hx.keep && hx.d == 2) hatTimes.push_back(hx.t);
     std::sort(hatTimes.begin(), hatTimes.end());
-    for (const auto& x : hits) {
-        if (!x.keep) continue;
-        const double* h = H.data() + std::size_t(x.d) * T;
-        int pitch = gm[x.d]; double len = 0.1;
-        if (x.d == 2) {   // open hat: still ringing (within 20 dB) after kOpenHatDecayS with no new hat before then
-            const std::size_t probe = x.t + std::size_t(std::lround(kOpenHatDecayS / tHop));
-            const auto nxt = std::upper_bound(hatTimes.begin(), hatTimes.end(), x.t);
+    for (const auto& hx : hits) {
+        if (!hx.keep) continue;
+        const double* h = H.data() + std::size_t(hx.d) * T;
+        int pitch = gm[hx.d]; double len = 0.1;
+        if (hx.d == 2) {   // open hat: still ringing (within 20 dB) after kOpenHatDecayS with no new hat before then
+            const std::size_t probe = hx.t + std::size_t(std::lround(kOpenHatDecayS / tHop));
+            const auto nxt = std::upper_bound(hatTimes.begin(), hatTimes.end(), hx.t);
             const bool interrupted = nxt != hatTimes.end() && *nxt <= probe;
-            if (probe < T && !interrupted && 20.0 * std::log10(std::max(h[probe], 1e-30) / x.lvl) > -20.0) { pitch = kGmOpenHat; len = 0.25; }
+            if (probe < T && !interrupted && 20.0 * std::log10(std::max(h[probe], 1e-30) / hx.lvl) > -20.0) { pitch = kGmOpenHat; len = 0.25; }
         }
-        std::size_t s0 = x.t; while (s0 > 0 && h[s0 - 1] < h[s0] && x.t - s0 < 3) --s0;   // where the rise began
+        std::size_t s0 = hx.t; while (s0 > 0 && h[s0 - 1] < h[s0] && hx.t - s0 < 3) --s0;   // where the rise began
         const double st = s0 * tHop;
-        notes.push_back({st, st + len, pitch, velocityFromDb(20.0 * std::log10(x.lvl), 20.0 * std::log10(ref[x.d]))});
+        notes.push_back({st, st + len, pitch, velocityFromDb(20.0 * std::log10(hx.lvl), 20.0 * std::log10(ref[hx.d]))});
     }
     std::sort(notes.begin(), notes.end(), [](const Note& p, const Note& q) { return p.start < q.start || (p.start == q.start && p.pitch < q.pitch); });
     return notes;

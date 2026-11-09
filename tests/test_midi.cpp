@@ -45,7 +45,7 @@ static void testMidiFile() {
     check(P.tracks[1].name == "Bass" && P.tracks[1].program == 33, "track name and instrument read back", P.tracks[1].program);
     bool ticks = P.tracks[1].notes.size() == 3 && P.tracks[1].notes[1].on == 480 && P.tracks[1].notes[1].off == 960 && P.tracks[1].notes[2].on == 960;
     check(ticks, "0.5 s at 120 BPM = 480 ticks, note-offs exact", double(P.tracks[1].notes.size() == 3 ? P.tracks[1].notes[1].on : -1), "ticks");
-    check(P.tracks[2].notes.size() == 2 && P.tracks[2].notes[0].channel == 9 && P.tracks[2].program == -1, "drums on channel 10, no program change", P.tracks[2].notes.size());
+    check(P.tracks[2].notes.size() == 2 && P.tracks[2].notes[0].channel == 9 && P.tracks[2].program == -1, "drums on channel 10, no program change", double(P.tracks[2].notes.size()));
     // quantize
     Track q{"Q", 0, 0, {{0.27, 0.40, 60, 100}, {0.52, 0.55, 62, 100}}};
     WriteOptions oq; oq.bpm = 120; oq.quantizeDiv = 16;   // grid 120 ticks = 0.125 s
