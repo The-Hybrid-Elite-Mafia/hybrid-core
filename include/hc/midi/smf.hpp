@@ -150,13 +150,14 @@ struct Parsed {
 inline Parsed parse(const std::vector<std::uint8_t>& d) {
     Parsed r;
     auto be32r = [&](std::size_t p) { return (std::uint32_t(d[p]) << 24) | (std::uint32_t(d[p + 1]) << 16) | (std::uint32_t(d[p + 2]) << 8) | d[p + 3]; };
-    if (d.size() < 14 || std::string(d.begin(), d.begin() + 4) != "MThd") { r.error = "not a MIDI file"; return r; }
+    auto tag = [&](std::size_t at) { return std::string(reinterpret_cast<const char*>(d.data()) + at, 4); };
+    if (d.size() < 14 || tag(0) != "MThd") { r.error = "not a MIDI file"; return r; }
     r.format = (d[8] << 8) | d[9];
     const int ntr = (d[10] << 8) | d[11];
     r.ppq = (d[12] << 8) | d[13];
     std::size_t p = 8 + be32r(4);
     for (int t = 0; t < ntr; ++t) {
-        if (p + 8 > d.size() || std::string(d.begin() + p, d.begin() + p + 4) != "MTrk") { r.error = "bad track header"; return r; }
+        if (p + 8 > d.size() || tag(p) != "MTrk") { r.error = "bad track header"; return r; }
         const std::size_t len = be32r(p + 4), end = p + 8 + len;
         if (end > d.size()) { r.error = "track runs past end of file"; return r; }
         p += 8;
@@ -173,7 +174,7 @@ inline Parsed parse(const std::vector<std::uint8_t>& d) {
             if (s == 0xFF) {
                 const std::uint8_t type = d[p++];
                 std::uint32_t l = 0; do { c = d[p++]; l = (l << 7) | (c & 0x7F); } while (c & 0x80);
-                if (type == 0x03) tr.name.assign(d.begin() + p, d.begin() + p + l);
+                if (type == 0x03) tr.name.assign(reinterpret_cast<const char*>(d.data()) + p, l);
                 if (type == 0x51 && l == 3) r.bpm = 60'000'000.0 / double((d[p] << 16) | (d[p + 1] << 8) | d[p + 2]);
                 if (type == 0x58 && l >= 1) r.timeSigNum = d[p];
                 p += l;

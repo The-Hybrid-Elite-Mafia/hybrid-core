@@ -384,15 +384,15 @@ void createControls() {
     g.btnStems = mk(L"BUTTON", L"LOAD STEMS (UP TO 13)", BS_OWNERDRAW, L + 180, 78, 230, 34, ID_LOAD_STEMS, g.fontBold);
     g.btnClear = mk(L"BUTTON", L"CLEAR", BS_OWNERDRAW, L + 420, 78, 90, 34, ID_CLEAR, g.fontBold);
     for (std::size_t i = 0; i < kMaxStems; ++i) {
-        const int y = 150 + int(i) * 30;
-        g.rowName[i] = mk(L"STATIC", L"—", SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS | SS_NOPREFIX, L + 34, y, 430, 26, ID_ROW_NAME + int(i));
+        const int y = 146 + int(i) * 28;
+        g.rowName[i] = mk(L"STATIC", L"—", SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS | SS_NOPREFIX, L + 34, y, 430, 24, ID_ROW_NAME + int(i));
         g.rowType[i] = mk(WC_COMBOBOXW, L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, L + 470, y, 130, 300, ID_ROW_TYPE + int(i));
         for (int k = 0; k < kModeCount; ++k) SendMessageW(g.rowType[i], CB_ADDSTRING, 0, LPARAM(wide(std::string(kModeNames[std::size_t(k)])).c_str()));
         SendMessageW(g.rowType[i], CB_SETCURSEL, 0, 0);
-        g.rowResult[i] = mk(L"STATIC", L"", SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS | SS_NOPREFIX, L + 612, y, 300, 26, ID_ROW_RESULT + int(i));
-        g.rowRemove[i] = mk(L"BUTTON", L"×", BS_OWNERDRAW, L + 920, y + 2, 24, 22, ID_ROW_REMOVE + int(i), g.fontBold);
+        g.rowResult[i] = mk(L"STATIC", L"", SS_LEFT | SS_CENTERIMAGE | SS_ENDELLIPSIS | SS_NOPREFIX, L + 612, y, 300, 24, ID_ROW_RESULT + int(i));
+        g.rowRemove[i] = mk(L"BUTTON", L"×", BS_OWNERDRAW, L + 920, y + 1, 24, 22, ID_ROW_REMOVE + int(i), g.fontBold);
     }
-    const int sy = 560;
+    const int sy = 520;
     mk(L"STATIC", L"TEMPO (BPM)", SS_LEFT, L, sy, 120, 20, -1, g.fontSmall);
     g.bpm = mk(L"EDIT", L"", ES_LEFT | ES_AUTOHSCROLL | WS_TABSTOP, L, sy + 22, 100, 26, ID_BPM);
     SendMessageW(g.bpm, EM_SETCUEBANNER, TRUE, LPARAM(L"auto"));
@@ -450,17 +450,17 @@ void paint(HDC dc) {
     RECT st{S(24), S(46), rc.right - S(24), S(70)};
     DrawTextW(dc, L"1 song or up to 13 stems in → MIDI files out (one per stem + one with every stem). Suno takes .mid uploads in Create (desktop website, Pro/Premier).", -1, &st, DT_LEFT | DT_SINGLELINE | DT_END_ELLIPSIS);
     // stem table
-    RECT panel{S(16), S(122), rc.right - S(16), S(150 + 13 * 30 + 4)};
+    RECT panel{S(16), S(122), rc.right - S(16), S(146 + 13 * 28 + 4)};
     FillRect(dc, &panel, g.panelBrush);
     SelectObject(dc, g.fontSmall); SetTextColor(dc, kDim);
     const int L = 24;
     auto head = [&](int x, const wchar_t* s) { RECT r{S(L + x), S(126), S(L + x + 300), S(146)}; DrawTextW(dc, s, -1, &r, DT_LEFT | DT_SINGLELINE); };
     head(0, L"#"); head(34, L"FILE"); head(470, L"PART TYPE"); head(612, L"RESULT");
     for (int i = 0; i < int(kMaxStems); ++i) {
-        const int y = 150 + i * 30;
-        if (i % 2) { RECT r{S(16), S(y - 2), rc.right - S(16), S(y + 28)}; FillRect(dc, &r, g.altBrush); }
+        const int y = 146 + i * 28;
+        if (i % 2) { RECT r{S(16), S(y - 2), rc.right - S(16), S(y + 26)}; FillRect(dc, &r, g.altBrush); }
         SelectObject(dc, g.fontBold); SetTextColor(dc, i < int(g.files.size()) ? kLime : RGB(0x40, 0x44, 0x4C));
-        wchar_t n[8]; swprintf(n, 8, L"%d", i + 1); RECT r{S(L), S(y), S(L + 30), S(y + 26)}; DrawTextW(dc, n, -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        wchar_t n[8]; swprintf(n, 8, L"%d", i + 1); RECT r{S(L), S(y), S(L + 30), S(y + 24)}; DrawTextW(dc, n, -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     }
     SelectObject(dc, g.fontSmall); SetTextColor(dc, kDim);
     RECT ft{S(24), rc.bottom - S(24), rc.right - S(24), rc.bottom - S(4)};
@@ -530,7 +530,7 @@ LRESULT CALLBACK proc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case WM_APP_PROGRESS: SendMessageW(g.progress, PBM_SETPOS, WPARAM(1000 * g.progDone / std::max(1, g.progTotal.load())), 0); return 0;
     case WM_APP_DONE: finishConvert(); return 0;
     case WM_APP_SELFTEST: selfTestStep(); return 0;
-    case WM_GETMINMAXINFO: { auto* mi = reinterpret_cast<MINMAXINFO*>(l); mi->ptMinTrackSize = {S(980), S(800)}; return 0; }
+    case WM_GETMINMAXINFO: { auto* mi = reinterpret_cast<MINMAXINFO*>(l); mi->ptMinTrackSize = {S(980), S(740)}; return 0; }
     case WM_CLOSE: if (g.busy) { setStatus(L"Still converting - please wait a moment.", true); return 0; } break;
     case WM_DESTROY: if (g.worker.joinable()) g.worker.join(); PostQuitMessage(g.selfFail); return 0;
     }
@@ -554,7 +554,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); wc.hIcon = LoadIconW(inst, MAKEINTRESOURCEW(1)); wc.hIconSm = wc.hIcon;
     RegisterClassExW(&wc);
     const UINT dpi = GetDpiForSystem(); const double sc = dpi ? dpi / 96.0 : 1.0;
-    RECT r{0, 0, int(980 * sc), int(800 * sc)}; AdjustWindowRectEx(&r, WS_OVERLAPPEDWINDOW, FALSE, 0);
+    RECT r{0, 0, int(980 * sc), int(740 * sc)}; AdjustWindowRectEx(&r, WS_OVERLAPPEDWINDOW, FALSE, 0);
     HWND h = CreateWindowExW(0, wc.lpszClassName, kTitle, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left, r.bottom - r.top, nullptr, nullptr, inst, nullptr);
     if (!h) return 1;
     ShowWindow(h, show); UpdateWindow(h);
