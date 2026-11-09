@@ -92,7 +92,7 @@ struct Score { int truth = 0, found = 0, hit = 0; double f() const { return trut
                double precision() const { return found ? double(hit) / found : 1.0; } double recall() const { return truth ? double(hit) / truth : 1.0; } };
 inline Score score(const std::vector<Note>& truth, const std::vector<Note>& got, double tol) {
     Score s; s.truth = int(truth.size()); s.found = int(got.size());
-    std::vector<char> used(got.size(), 0);
+    std::vector<char> used(got.size(), char(0));
     for (const auto& t : truth) {
         int best = -1; double bd = tol + 1e-9;
         for (std::size_t j = 0; j < got.size(); ++j)

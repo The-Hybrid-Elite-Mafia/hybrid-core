@@ -246,7 +246,7 @@ inline std::vector<Note> monoTranscribe(const std::vector<float>& x, double sr, 
     }
     const std::size_t span = std::max<std::size_t>(2, std::size_t(std::lround(kReattackWindowS / kHopSeconds)));
     const auto ons = levelOnsets(lv, span, kReattackRiseDb);
-    std::vector<char> isOnset(pf.size(), 0);
+    std::vector<char> isOnset(pf.size(), char(0));
     for (auto o : ons) isOnset[o] = 1;
 
     const double tHop = double(hop) / sr;
@@ -308,7 +308,7 @@ inline std::vector<Note> polyTranscribe(const std::vector<float>& x, double sr, 
     const Spectrogram So = spectrogram(x, sr, sfft, hop);
     const auto onFlux = bandFlux(So, 30.0, std::min(8000.0, 0.45 * sr));
     const auto onsets = pickPeaks(onFlux, std::size_t(0.1 / tHop), kPolyOnsetK, kPolyOnsetDelta, std::max<std::size_t>(1, std::size_t(0.04 / tHop)));
-    std::vector<char> isOnset(S.frames, 0); for (auto o : onsets) if (o < S.frames) isOnset[o] = 1;
+    std::vector<char> isOnset(S.frames, char(0)); for (auto o : onsets) if (o < S.frames) isOnset[o] = 1;
 
     const auto lv = frameLevels(x, hop, std::size_t(0.046 * sr), S.frames);
     const double peak = *std::max_element(lv.begin(), lv.end());
@@ -343,7 +343,7 @@ inline std::vector<Note> polyTranscribe(const std::vector<float>& x, double sr, 
         tmp.assign(Y.begin(), Y.end());
         std::nth_element(tmp.begin(), tmp.begin() + std::ptrdiff_t(tmp.size() / 2), tmp.end());
         const float floor = 3.0f * tmp[tmp.size() / 2] + 1e-4f;
-        std::fill(used.begin(), used.end(), 0);
+        std::fill(used.begin(), used.end(), char(0));
         double first = 0;
         for (int it = 0; it < kPolyMaxNotes; ++it) {
             int bestP = -1; double bestS = 0;
